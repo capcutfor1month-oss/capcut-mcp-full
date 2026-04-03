@@ -27,7 +27,13 @@ defmodule CapcutMcp.CapCut.ReaderTest do
     }
     File.write!(Path.join(tmp, "root_meta_info.json"), Jason.encode!(meta))
     assert {:ok, [project]} = Reader.list_projects(tmp)
-    assert %ProjectMeta{id: "abc-123", name: "My Video", duration_ms: 5000} = project
+    assert %ProjectMeta{
+      id: "abc-123",
+      name: "My Video",
+      path: "/some/path",
+      modified_at: 1_000_000_000_000_000,
+      duration_ms: 5000
+    } = project
   end
 
   @tag :tmp_dir

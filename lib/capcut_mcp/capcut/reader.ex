@@ -4,6 +4,7 @@ defmodule CapcutMcp.CapCut.Reader do
   alias CapcutMcp.CapCut.Types.ProjectMeta
 
   @doc "Reads all project metadata from root_meta_info.json"
+  @spec list_projects(String.t()) :: {:ok, [ProjectMeta.t()]} | {:error, term()}
   def list_projects(root_path) do
     meta_file = Path.join(root_path, "root_meta_info.json")
 
@@ -12,13 +13,14 @@ defmodule CapcutMcp.CapCut.Reader do
       projects =
         data
         |> Map.get("all_draft_store", [])
+        |> Enum.filter(fn d -> d["draft_id"] && d["draft_name"] && d["draft_fold_path"] end)
         |> Enum.map(fn draft ->
           %ProjectMeta{
             id: draft["draft_id"],
             name: draft["draft_name"],
             path: draft["draft_fold_path"],
             modified_at: draft["tm_draft_modified"],
-            duration_ms: div(draft["tm_duration"] || 0, 1000)
+            duration_ms: draft["tm_duration"] |> Kernel.||(0) |> trunc() |> div(1000)
           }
         end)
 
@@ -27,6 +29,7 @@ defmodule CapcutMcp.CapCut.Reader do
   end
 
   @doc "Reads draft_content.json for a given project folder path"
+  @spec read_draft(String.t()) :: {:ok, map()} | {:error, term()}
   def read_draft(draft_path) do
     json_file = Path.join(draft_path, "draft_content.json")
 
