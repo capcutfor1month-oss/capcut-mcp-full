@@ -1,0 +1,17 @@
+defmodule CapcutMcp.CapCut.TypesTest do
+  use ExUnit.Case, async: true
+  alias CapcutMcp.CapCut.Types.ProjectMeta
+
+  test "ProjectMeta struct requires id, name, path" do
+    meta = %ProjectMeta{id: "abc", name: "My Video", path: "/some/path"}
+    assert meta.id == "abc"
+    assert meta.name == "My Video"
+    assert meta.duration_ms == nil
+  end
+
+  test "ProjectMeta raises on missing required fields" do
+    assert_raise ArgumentError, fn ->
+      struct!(ProjectMeta, %{id: "abc"})
+    end
+  end
+end
