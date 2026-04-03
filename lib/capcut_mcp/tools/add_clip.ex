@@ -97,7 +97,7 @@ defmodule CapcutMcp.Tools.AddClip do
     end
   end
 
-  defp insert_segment(tracks, segment, type, idx) when is_integer(idx) and idx < length(tracks) do
+  defp insert_segment(tracks, segment, _type, idx) when is_integer(idx) and idx < length(tracks) do
     updated = Map.update!(Enum.at(tracks, idx), "segments", fn s -> s ++ [segment] end)
     {List.replace_at(tracks, idx, updated), idx}
   end
