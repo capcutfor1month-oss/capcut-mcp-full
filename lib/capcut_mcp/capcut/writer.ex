@@ -1,16 +1,25 @@
 defmodule CapcutMcp.CapCut.Writer do
   @moduledoc "Writes CapCut project data to the local filesystem, with backup on overwrite."
 
-  @doc "Writes draft_content.json; backs up existing file to .bak first"
+  @doc "Writes draft_content.json; backs up existing file to .bak first. Uses atomic write (tmp + rename) for safety."
   @spec write_draft(String.t(), map()) :: :ok | {:error, term()}
   def write_draft(draft_path, content) do
     json_file = Path.join(draft_path, "draft_content.json")
     bak_file = Path.join(draft_path, "draft_content.json.bak")
+    tmp_file = Path.join(draft_path, "draft_content.json.tmp")
 
-    with {:ok, encoded} <- Jason.encode(content) do
-      # Backup existing file — ignore error if it doesn't exist yet
-      File.copy(json_file, bak_file)
-      File.write(json_file, encoded)
+    with {:ok, encoded} <- Jason.encode(content),
+         :ok <- File.write(tmp_file, encoded),
+         :ok <- backup_if_exists(json_file, bak_file) do
+      File.rename(tmp_file, json_file)
+    end
+  end
+
+  defp backup_if_exists(source, dest) do
+    case File.copy(source, dest) do
+      {:ok, _} -> :ok
+      {:error, :enoent} -> :ok
+      {:error, reason} -> {:error, {:backup_failed, reason}}
     end
   end
 
