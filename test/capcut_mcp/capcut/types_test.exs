@@ -6,11 +6,12 @@ defmodule CapcutMcp.CapCut.TypesTest do
     meta = %ProjectMeta{id: "abc", name: "My Video", path: "/some/path"}
     assert meta.id == "abc"
     assert meta.name == "My Video"
+    assert meta.path == "/some/path"
     assert meta.duration_ms == nil
   end
 
   test "ProjectMeta raises on missing required fields" do
-    assert_raise ArgumentError, fn ->
+    assert_raise ArgumentError, ~r/the following keys must also be given/, fn ->
       struct!(ProjectMeta, %{id: "abc"})
     end
   end
