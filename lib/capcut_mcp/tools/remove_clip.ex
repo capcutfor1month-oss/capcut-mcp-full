@@ -1,22 +1,30 @@
 defmodule CapcutMcp.Tools.RemoveClip do
   @moduledoc "MCP tool: remove a clip/segment from a CapCut project timeline."
+  @behaviour CapcutMcp.Tool
+
   alias CapcutMcp.CapCut.ProjectStore
 
+  @impl true
   def definition do
     %{
       "name" => "remove_clip",
-      "description" => "Removes a clip/segment from a CapCut project timeline by its segment ID. Get IDs via get_timeline.",
+      "description" =>
+        "Removes a clip/segment from a CapCut project timeline by its segment ID. Get IDs via get_timeline.",
       "inputSchema" => %{
         "type" => "object",
         "properties" => %{
           "project_id" => %{"type" => "string", "description" => "The draft_id of the project"},
-          "clip_id" => %{"type" => "string", "description" => "The segment ID to remove (from get_timeline)"}
+          "clip_id" => %{
+            "type" => "string",
+            "description" => "The segment ID to remove (from get_timeline)"
+          }
         },
         "required" => ["project_id", "clip_id"]
       }
     }
   end
 
+  @impl true
   def execute(%{"project_id" => id, "clip_id" => clip_id}) do
     with {:ok, draft} <- ProjectStore.get_project(id),
          {updated_tracks, true} <- remove_segment(draft["tracks"] || [], clip_id),
@@ -35,7 +43,7 @@ defmodule CapcutMcp.Tools.RemoveClip do
       segs = track["segments"] || []
       new_segs = Enum.reject(segs, &(&1["id"] == clip_id))
       was_removed = length(new_segs) < length(segs)
-      
+
       {Map.put(track, "segments", new_segs), found || was_removed}
     end)
   end

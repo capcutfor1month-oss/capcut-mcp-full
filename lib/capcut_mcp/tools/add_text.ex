@@ -1,8 +1,11 @@
 defmodule CapcutMcp.Tools.AddText do
   @moduledoc "MCP tool: add a text overlay to a CapCut project timeline."
+  @behaviour CapcutMcp.Tool
+
   alias CapcutMcp.CapCut.ProjectStore
   alias CapcutMcp.Tools.TimelineHelper
 
+  @impl true
   def definition do
     %{
       "name" => "add_text",
@@ -14,14 +17,25 @@ defmodule CapcutMcp.Tools.AddText do
           "content" => %{"type" => "string", "description" => "The text to display"},
           "start_ms" => %{"type" => "integer", "description" => "Start time in milliseconds"},
           "duration_ms" => %{"type" => "integer", "description" => "Duration in milliseconds"},
-          "track_index" => %{"type" => "integer", "description" => "Track index (default: auto-select text track)"}
+          "track_index" => %{
+            "type" => "integer",
+            "description" => "Track index (default: auto-select text track)"
+          }
         },
         "required" => ["project_id", "content", "start_ms", "duration_ms"]
       }
     }
   end
 
-  def execute(%{"project_id" => id, "content" => content, "start_ms" => start_ms, "duration_ms" => duration_ms} = args) do
+  @impl true
+  def execute(
+        %{
+          "project_id" => id,
+          "content" => content,
+          "start_ms" => start_ms,
+          "duration_ms" => duration_ms
+        } = args
+      ) do
     track_index = Map.get(args, "track_index")
 
     with {:ok, draft} <- ProjectStore.get_project(id),

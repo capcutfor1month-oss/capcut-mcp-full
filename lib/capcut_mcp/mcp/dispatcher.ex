@@ -1,7 +1,16 @@
 defmodule CapcutMcp.MCP.Dispatcher do
   @moduledoc "Routes JSON-RPC tool calls to the appropriate tool module."
   alias CapcutMcp.MCP.Protocol
-  alias CapcutMcp.Tools.{ListProjects, GetProject, GetTimeline, CreateProject, AddText, AddClip, RemoveClip}
+
+  alias CapcutMcp.Tools.{
+    ListProjects,
+    GetProject,
+    GetTimeline,
+    CreateProject,
+    AddText,
+    AddClip,
+    RemoveClip
+  }
 
   @tools [ListProjects, GetProject, GetTimeline, CreateProject, AddText, AddClip, RemoveClip]
 
@@ -23,14 +32,20 @@ defmodule CapcutMcp.MCP.Dispatcher do
     Protocol.encode_response(id, %{"tools" => tools})
   end
 
-  def dispatch(%{"method" => "tools/call", "id" => id, "params" => %{"name" => name, "arguments" => args}}) do
+  def dispatch(%{
+        "method" => "tools/call",
+        "id" => id,
+        "params" => %{"name" => name, "arguments" => args}
+      }) do
     case Enum.find(@tools, fn t -> t.definition()["name"] == name end) do
       nil ->
         Protocol.encode_error(id, -32601, "Tool not found: #{name}")
+
       tool ->
         case tool.execute(args) do
           {:ok, text} ->
             Protocol.encode_response(id, %{"content" => [%{"type" => "text", "text" => text}]})
+
           {:error, reason} ->
             Protocol.encode_error(id, -32602, to_string(reason))
         end

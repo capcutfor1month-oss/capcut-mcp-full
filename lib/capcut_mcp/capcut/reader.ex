@@ -20,7 +20,7 @@ defmodule CapcutMcp.CapCut.Reader do
             name: draft["draft_name"],
             path: draft["draft_fold_path"],
             modified_at: draft["tm_draft_modified"],
-            duration_ms: draft["tm_duration"] |> Kernel.||(0) |> trunc() |> div(1000)
+            duration_ms: (draft["tm_duration"] || 0) |> trunc() |> div(1000)
           }
         end)
 

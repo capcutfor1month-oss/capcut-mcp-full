@@ -14,12 +14,12 @@ defmodule CapcutMcp.CapCut.Types do
     """
 
     @type t :: %__MODULE__{
-      id: String.t(),
-      name: String.t(),
-      path: String.t(),
-      modified_at: integer() | nil,
-      duration_ms: integer() | nil
-    }
+            id: String.t(),
+            name: String.t(),
+            path: String.t(),
+            modified_at: integer() | nil,
+            duration_ms: integer() | nil
+          }
 
     @enforce_keys [:id, :name, :path]
     defstruct [:id, :name, :path, :modified_at, :duration_ms]

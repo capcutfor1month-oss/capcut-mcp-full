@@ -4,11 +4,16 @@ defmodule CapcutMcp.Tools.TimelineHelper do
   Provides UUID generation, segment insertion, material addition, and validation logic.
   """
 
-  @doc "Generates a v4-like UUID."
+  @doc "Generates a v4-like UUID using crypto-safe random bytes."
+  @spec generate_uuid() :: String.t()
   def generate_uuid do
     <<a::48, _::4, b::12, _::2, c::62>> = :crypto.strong_rand_bytes(16)
-    s = <<a::48, 4::4, b::12, 2::2, c::62>> |> Base.encode16(case: :upper)
-    "#{String.slice(s, 0, 8)}-#{String.slice(s, 8, 4)}-#{String.slice(s, 12, 4)}-#{String.slice(s, 16, 4)}-#{String.slice(s, 20, 12)}"
+    <<hex::binary-size(32)>> = Base.encode16(<<a::48, 4::4, b::12, 2::2, c::62>>, case: :upper)
+
+    <<g1::binary-size(8), g2::binary-size(4), g3::binary-size(4), g4::binary-size(4),
+      g5::binary-size(12)>> = hex
+
+    "#{g1}-#{g2}-#{g3}-#{g4}-#{g5}"
   end
 
   @doc "Inserts a segment into the appropriate track."
@@ -22,6 +27,7 @@ defmodule CapcutMcp.Tools.TimelineHelper do
           "attribute" => 0,
           "flag" => 0
         }
+
         {tracks ++ [new_track], length(tracks)}
 
       idx ->
@@ -30,7 +36,8 @@ defmodule CapcutMcp.Tools.TimelineHelper do
     end
   end
 
-  def insert_segment(tracks, segment, _type, idx) when is_integer(idx) and idx >= 0 and idx < length(tracks) do
+  def insert_segment(tracks, segment, _type, idx)
+      when is_integer(idx) and idx >= 0 and idx < length(tracks) do
     updated = Map.update!(Enum.at(tracks, idx), "segments", &(&1 ++ [segment]))
     {List.replace_at(tracks, idx, updated), idx}
   end
@@ -47,7 +54,8 @@ defmodule CapcutMcp.Tools.TimelineHelper do
   @doc "Validates that the track index is within bounds, or nil."
   def validate_track_index(_tracks, nil), do: {:ok, nil}
 
-  def validate_track_index(tracks, idx) when is_integer(idx) and idx >= 0 and idx < length(tracks) do
+  def validate_track_index(tracks, idx)
+      when is_integer(idx) and idx >= 0 and idx < length(tracks) do
     {:ok, idx}
   end
 

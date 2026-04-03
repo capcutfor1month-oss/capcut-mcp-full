@@ -1,11 +1,14 @@
 defmodule CapcutMcp.Tools.AddClip do
   @moduledoc "MCP tool: add a video or audio clip to a CapCut project timeline."
+  @behaviour CapcutMcp.Tool
+
   alias CapcutMcp.CapCut.ProjectStore
   alias CapcutMcp.Tools.TimelineHelper
 
   @video_exts ~w(.mp4 .mov .avi .mkv .webm .m4v .wmv)
   @audio_exts ~w(.mp3 .wav .aac .flac .ogg .m4a)
 
+  @impl true
   def definition do
     %{
       "name" => "add_clip",
@@ -14,9 +17,18 @@ defmodule CapcutMcp.Tools.AddClip do
         "type" => "object",
         "properties" => %{
           "project_id" => %{"type" => "string", "description" => "The draft_id of the project"},
-          "file_path" => %{"type" => "string", "description" => "Absolute path to the video or audio file"},
-          "start_ms" => %{"type" => "integer", "description" => "Start time on timeline in ms (default: 0)"},
-          "duration_ms" => %{"type" => "integer", "description" => "Duration in ms (default: 5000)"},
+          "file_path" => %{
+            "type" => "string",
+            "description" => "Absolute path to the video or audio file"
+          },
+          "start_ms" => %{
+            "type" => "integer",
+            "description" => "Start time on timeline in ms (default: 0)"
+          },
+          "duration_ms" => %{
+            "type" => "integer",
+            "description" => "Duration in ms (default: 5000)"
+          },
           "track_index" => %{"type" => "integer", "description" => "Track index (default: auto)"}
         },
         "required" => ["project_id", "file_path"]
@@ -24,6 +36,7 @@ defmodule CapcutMcp.Tools.AddClip do
     }
   end
 
+  @impl true
   def execute(%{"project_id" => id, "file_path" => file_path} = args) do
     start_ms = Map.get(args, "start_ms", 0)
     duration_ms = Map.get(args, "duration_ms", 5000)
@@ -52,7 +65,10 @@ defmodule CapcutMcp.Tools.AddClip do
            TimelineHelper.validate_timing(start_ms, duration_ms),
          {:ok, validated_track_index} <- TimelineHelper.validate_track_index(tracks, track_index) do
       track_type = detect_type(validated_file_path)
-      material = build_material(material_id, track_type, validated_file_path, validated_duration_ms)
+
+      material =
+        build_material(material_id, track_type, validated_file_path, validated_duration_ms)
+
       segment = build_segment(segment_id, material_id, validated_start_ms, validated_duration_ms)
 
       {updated_tracks, track_idx} =

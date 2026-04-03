@@ -12,11 +12,26 @@ defmodule CapcutMcp.CapCut.ProjectStoreTest do
       "id" => project_id,
       "name" => "Test",
       "tracks" => [],
-      "materials" => %{"videos" => [], "texts" => [], "audios" => [], "images" => [], "effects" => [], "transitions" => [], "stickers" => [], "filters" => []},
+      "materials" => %{
+        "videos" => [],
+        "texts" => [],
+        "audios" => [],
+        "images" => [],
+        "effects" => [],
+        "transitions" => [],
+        "stickers" => [],
+        "filters" => []
+      },
       "fps" => 30.0,
       "duration" => 0,
-      "canvas_config" => %{"width" => 1920, "height" => 1080, "ratio" => "original", "background" => nil}
+      "canvas_config" => %{
+        "width" => 1920,
+        "height" => 1080,
+        "ratio" => "original",
+        "background" => nil
+      }
     }
+
     File.write!(Path.join(project_path, "draft_content.json"), Jason.encode!(draft))
 
     meta = %{
@@ -33,6 +48,7 @@ defmodule CapcutMcp.CapCut.ProjectStoreTest do
       "draft_ids" => 1,
       "root_path" => tmp
     }
+
     File.write!(Path.join(tmp, "root_meta_info.json"), Jason.encode!(meta))
 
     {:ok, _pid} = start_supervised({ProjectStore, [root_path: tmp]})

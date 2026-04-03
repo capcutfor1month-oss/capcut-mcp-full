@@ -15,7 +15,12 @@ defmodule CapcutMcp.ToolsTest do
       "fps" => 30.0,
       "duration" => 10_000_000,
       "new_version" => "163.0.0",
-      "canvas_config" => %{"width" => 1920, "height" => 1080, "ratio" => "original", "background" => nil},
+      "canvas_config" => %{
+        "width" => 1920,
+        "height" => 1080,
+        "ratio" => "original",
+        "background" => nil
+      },
       "tracks" => [
         %{
           "id" => "track-001",
@@ -30,8 +35,18 @@ defmodule CapcutMcp.ToolsTest do
           ]
         }
       ],
-      "materials" => %{"videos" => [], "texts" => [], "audios" => [], "images" => [], "effects" => [], "transitions" => [], "stickers" => [], "filters" => []}
+      "materials" => %{
+        "videos" => [],
+        "texts" => [],
+        "audios" => [],
+        "images" => [],
+        "effects" => [],
+        "transitions" => [],
+        "stickers" => [],
+        "filters" => []
+      }
     }
+
     File.write!(Path.join(project_path, "draft_content.json"), Jason.encode!(draft))
 
     meta = %{
@@ -48,6 +63,7 @@ defmodule CapcutMcp.ToolsTest do
       "draft_ids" => 1,
       "root_path" => tmp
     }
+
     File.write!(Path.join(tmp, "root_meta_info.json"), Jason.encode!(meta))
 
     start_supervised!({ProjectStore, [root_path: tmp]})
@@ -101,7 +117,14 @@ defmodule CapcutMcp.ToolsTest do
 
   @tag :tmp_dir
   test "CreateProject.execute respects width/height/fps params" do
-    assert {:ok, id} = CreateProject.execute(%{"name" => "Vertical", "width" => 1080, "height" => 1920, "fps" => 60})
+    assert {:ok, id} =
+             CreateProject.execute(%{
+               "name" => "Vertical",
+               "width" => 1080,
+               "height" => 1920,
+               "fps" => 60
+             })
+
     assert {:ok, draft} = ProjectStore.get_project(id)
     assert draft["canvas_config"]["width"] == 1080
     assert draft["canvas_config"]["height"] == 1920
@@ -110,12 +133,14 @@ defmodule CapcutMcp.ToolsTest do
 
   @tag :tmp_dir
   test "AddText.execute adds a text track segment", %{project_id: id} do
-    assert {:ok, msg} = AddText.execute(%{
-      "project_id" => id,
-      "content" => "Hello World",
-      "start_ms" => 0,
-      "duration_ms" => 2000
-    })
+    assert {:ok, msg} =
+             AddText.execute(%{
+               "project_id" => id,
+               "content" => "Hello World",
+               "start_ms" => 0,
+               "duration_ms" => 2000
+             })
+
     assert msg =~ "Text added"
     {:ok, draft} = ProjectStore.get_project(id)
     text_tracks = Enum.filter(draft["tracks"], fn t -> t["type"] == "text" end)
@@ -126,7 +151,14 @@ defmodule CapcutMcp.ToolsTest do
 
   @tag :tmp_dir
   test "AddText.execute returns error for unknown project" do
-    assert {:error, msg} = AddText.execute(%{"project_id" => "NOPE", "content" => "x", "start_ms" => 0, "duration_ms" => 1000})
+    assert {:error, msg} =
+             AddText.execute(%{
+               "project_id" => "NOPE",
+               "content" => "x",
+               "start_ms" => 0,
+               "duration_ms" => 1000
+             })
+
     assert msg =~ "not found"
   end
 
@@ -203,12 +235,14 @@ defmodule CapcutMcp.ToolsTest do
 
   @tag :tmp_dir
   test "AddClip.execute adds a video segment", %{project_id: id} do
-    assert {:ok, msg} = AddClip.execute(%{
-      "project_id" => id,
-      "file_path" => "C:/Users/tspor/Videos/test.mp4",
-      "start_ms" => 0,
-      "duration_ms" => 5000
-    })
+    assert {:ok, msg} =
+             AddClip.execute(%{
+               "project_id" => id,
+               "file_path" => "C:/Users/tspor/Videos/test.mp4",
+               "start_ms" => 0,
+               "duration_ms" => 5000
+             })
+
     assert msg =~ "Clip added"
     {:ok, draft} = ProjectStore.get_project(id)
     video_tracks = Enum.filter(draft["tracks"], fn t -> t["type"] == "video" end)
@@ -217,12 +251,14 @@ defmodule CapcutMcp.ToolsTest do
 
   @tag :tmp_dir
   test "AddClip.execute detects audio files by extension", %{project_id: id} do
-    assert {:ok, msg} = AddClip.execute(%{
-      "project_id" => id,
-      "file_path" => "C:/Users/tspor/Music/track.mp3",
-      "start_ms" => 0,
-      "duration_ms" => 3000
-    })
+    assert {:ok, msg} =
+             AddClip.execute(%{
+               "project_id" => id,
+               "file_path" => "C:/Users/tspor/Music/track.mp3",
+               "start_ms" => 0,
+               "duration_ms" => 3000
+             })
+
     assert msg =~ "Clip added"
     {:ok, draft} = ProjectStore.get_project(id)
     audio_tracks = Enum.filter(draft["tracks"], fn t -> t["type"] == "audio" end)
@@ -314,11 +350,26 @@ defmodule CapcutMcp.ToolsTest do
   test "RemoveClip.execute removes a segment by ID", %{project_id: id} do
     # Load into cache first
     {:ok, _} = ProjectStore.get_project(id)
-    assert :ok = ProjectStore.update_project(id, %{
-      "id" => id,
-      "tracks" => [%{"id" => "t1", "type" => "text", "segments" => [%{"id" => "seg-to-remove", "material_id" => "m1", "target_timerange" => %{"start" => 0, "duration" => 1000}}]}],
-      "materials" => %{}
-    })
+
+    assert :ok =
+             ProjectStore.update_project(id, %{
+               "id" => id,
+               "tracks" => [
+                 %{
+                   "id" => "t1",
+                   "type" => "text",
+                   "segments" => [
+                     %{
+                       "id" => "seg-to-remove",
+                       "material_id" => "m1",
+                       "target_timerange" => %{"start" => 0, "duration" => 1000}
+                     }
+                   ]
+                 }
+               ],
+               "materials" => %{}
+             })
+
     assert {:ok, _} = RemoveClip.execute(%{"project_id" => id, "clip_id" => "seg-to-remove"})
     {:ok, draft} = ProjectStore.get_project(id)
     all_segments = draft["tracks"] |> Enum.flat_map(fn t -> t["segments"] || [] end)

@@ -187,10 +187,5 @@ defmodule CapcutMcp.CapCut.ProjectStore do
     }
   end
 
-  defp generate_uuid do
-    <<a::48, _::4, b::12, _::2, c::62>> = :crypto.strong_rand_bytes(16)
-    s = <<a::48, 4::4, b::12, 2::2, c::62>> |> Base.encode16(case: :upper)
-
-    "#{String.slice(s, 0, 8)}-#{String.slice(s, 8, 4)}-#{String.slice(s, 12, 4)}-#{String.slice(s, 16, 4)}-#{String.slice(s, 20, 12)}"
-  end
+  defp generate_uuid, do: CapcutMcp.Tools.TimelineHelper.generate_uuid()
 end

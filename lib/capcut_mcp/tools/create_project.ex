@@ -1,7 +1,10 @@
 defmodule CapcutMcp.Tools.CreateProject do
   @moduledoc "MCP tool: create a new CapCut draft project."
+  @behaviour CapcutMcp.Tool
+
   alias CapcutMcp.CapCut.ProjectStore
 
+  @impl true
   def definition do
     %{
       "name" => "create_project",
@@ -10,8 +13,14 @@ defmodule CapcutMcp.Tools.CreateProject do
         "type" => "object",
         "properties" => %{
           "name" => %{"type" => "string", "description" => "Project name"},
-          "width" => %{"type" => "integer", "description" => "Canvas width in pixels (default: 1920)"},
-          "height" => %{"type" => "integer", "description" => "Canvas height in pixels (default: 1080)"},
+          "width" => %{
+            "type" => "integer",
+            "description" => "Canvas width in pixels (default: 1920)"
+          },
+          "height" => %{
+            "type" => "integer",
+            "description" => "Canvas height in pixels (default: 1080)"
+          },
           "fps" => %{"type" => "number", "description" => "Frames per second (default: 30)"}
         },
         "required" => ["name"]
@@ -19,6 +28,7 @@ defmodule CapcutMcp.Tools.CreateProject do
     }
   end
 
+  @impl true
   def execute(args) do
     case ProjectStore.create_project(args) do
       {:ok, id} -> {:ok, id}

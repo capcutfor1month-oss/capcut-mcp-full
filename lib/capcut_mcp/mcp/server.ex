@@ -24,9 +24,11 @@ defmodule CapcutMcp.MCP.Server do
           nil -> :ok
           response -> IO.puts(response)
         end
+
       {:error, _} ->
         IO.puts(Protocol.encode_error(nil, -32700, "Parse error"))
     end
+
     {:noreply, state}
   end
 
@@ -44,8 +46,10 @@ defmodule CapcutMcp.MCP.Server do
     case IO.read(:stdio, :line) do
       :eof ->
         send(server_pid, :eof)
+
       {:error, reason} ->
         send(server_pid, {:stdin_error, reason})
+
       line ->
         trimmed = String.trim(line)
         unless trimmed == "", do: send(server_pid, {:line, trimmed})
