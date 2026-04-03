@@ -1,6 +1,7 @@
 defmodule CapcutMcp.Tools.AddText do
   @moduledoc "MCP tool: add a text overlay to a CapCut project timeline."
   alias CapcutMcp.CapCut.ProjectStore
+  alias CapcutMcp.Tools.TimelineHelper
 
   def definition do
     %{
@@ -21,73 +22,82 @@ defmodule CapcutMcp.Tools.AddText do
   end
 
   def execute(%{"project_id" => id, "content" => content, "start_ms" => start_ms, "duration_ms" => duration_ms} = args) do
-    case ProjectStore.get_project(id) do
-      {:ok, draft} ->
-        text_id = generate_uuid()
-        segment_id = generate_uuid()
-        start_us = start_ms * 1000
-        duration_us = duration_ms * 1000
+    track_index = Map.get(args, "track_index")
 
-        text_material = %{
-          "id" => text_id,
-          "type" => "text",
-          "content" => content,
-          "text_size" => 30,
-          "font_color" => "rgba(1,1,1,1)",
-          "bold" => false,
-          "italic" => false,
-          "underline" => false,
-          "alignment" => "center",
-          "text_to_audio_ids" => [],
-          "words" => %{"words" => []}
-        }
-
-        segment = %{
-          "id" => segment_id,
-          "material_id" => text_id,
-          "target_timerange" => %{"start" => start_us, "duration" => duration_us},
-          "source_timerange" => %{"start" => 0, "duration" => duration_us},
-          "extra_material_refs" => [],
-          "render_index" => 0
-        }
-
-        tracks = draft["tracks"] || []
-        {updated_tracks, track_idx} = insert_segment(tracks, segment, "text", Map.get(args, "track_index"))
-        materials = draft["materials"] || %{}
-        updated_materials = Map.update(materials, "texts", [text_material], fn t -> t ++ [text_material] end)
-        updated_draft = draft |> Map.put("tracks", updated_tracks) |> Map.put("materials", updated_materials)
-
-        case ProjectStore.update_project(id, updated_draft) do
-          :ok ->
-            {:ok, "Text added.\nSegment ID: #{segment_id}\nTrack index: #{track_idx}\nContent: \"#{content}\"\nTime: #{start_ms}ms → #{start_ms + duration_ms}ms"}
-          error -> {:error, inspect(error)}
-        end
+    with {:ok, draft} <- ProjectStore.get_project(id),
+         {:ok, {updated_draft, segment_id, track_idx}} <-
+           apply_text_to_draft(draft, content, start_ms, duration_ms, track_index),
+         :ok <- ProjectStore.update_project(id, updated_draft) do
+      {:ok,
+       "Text added.\nSegment ID: #{segment_id}\nTrack index: #{track_idx}\nContent: \"#{content}\"\nTime: #{start_ms}ms → #{start_ms + duration_ms}ms"}
+    else
       {:error, :not_found} -> {:error, "Project not found: #{id}"}
+      {:error, reason} when is_binary(reason) -> {:error, reason}
       {:error, reason} -> {:error, inspect(reason)}
     end
   end
 
-  defp insert_segment(tracks, segment, type, nil) do
-    case Enum.find_index(tracks, fn t -> t["type"] == type end) do
-      nil ->
-        new_track = %{"id" => generate_uuid(), "type" => type, "segments" => [segment], "attribute" => 0, "flag" => 0}
-        {tracks ++ [new_track], length(tracks)}
-      idx ->
-        updated = Map.update!(Enum.at(tracks, idx), "segments", fn s -> s ++ [segment] end)
-        {List.replace_at(tracks, idx, updated), idx}
+  defp apply_text_to_draft(draft, content, start_ms, duration_ms, track_index) do
+    text_id = TimelineHelper.generate_uuid()
+    segment_id = TimelineHelper.generate_uuid()
+    tracks = draft["tracks"] || []
+
+    with {:ok, validated_content} <- validate_content(content),
+         {:ok, {validated_start_ms, validated_duration_ms}} <-
+           TimelineHelper.validate_timing(start_ms, duration_ms),
+         {:ok, validated_track_index} <- TimelineHelper.validate_track_index(tracks, track_index) do
+      text_material = build_text_material(text_id, validated_content)
+      segment = build_segment(segment_id, text_id, validated_start_ms, validated_duration_ms)
+
+      {updated_tracks, track_idx} =
+        TimelineHelper.insert_segment(tracks, segment, "text", validated_track_index)
+
+      updated_draft =
+        draft
+        |> Map.put("tracks", updated_tracks)
+        |> TimelineHelper.add_material("texts", text_material)
+
+      {:ok, {updated_draft, segment_id, track_idx}}
     end
   end
 
-  defp insert_segment(tracks, segment, _type, idx) when is_integer(idx) and idx < length(tracks) do
-    updated = Map.update!(Enum.at(tracks, idx), "segments", fn s -> s ++ [segment] end)
-    {List.replace_at(tracks, idx, updated), idx}
+  defp build_text_material(id, content) do
+    %{
+      "id" => id,
+      "type" => "text",
+      "content" => content,
+      "text_size" => 30,
+      "font_color" => "rgba(1,1,1,1)",
+      "bold" => false,
+      "italic" => false,
+      "underline" => false,
+      "alignment" => "center",
+      "text_to_audio_ids" => [],
+      "words" => %{"words" => []}
+    }
   end
 
-  defp insert_segment(tracks, segment, type, _idx), do: insert_segment(tracks, segment, type, nil)
+  defp build_segment(id, material_id, start_ms, duration_ms) do
+    start_us = start_ms * 1000
+    duration_us = duration_ms * 1000
 
-  defp generate_uuid do
-    <<a::48, _::4, b::12, _::2, c::62>> = :crypto.strong_rand_bytes(16)
-    s = <<a::48, 4::4, b::12, 2::2, c::62>> |> Base.encode16(case: :upper)
-    "#{String.slice(s, 0, 8)}-#{String.slice(s, 8, 4)}-#{String.slice(s, 12, 4)}-#{String.slice(s, 16, 4)}-#{String.slice(s, 20, 12)}"
+    %{
+      "id" => id,
+      "material_id" => material_id,
+      "target_timerange" => %{"start" => start_us, "duration" => duration_us},
+      "source_timerange" => %{"start" => 0, "duration" => duration_us},
+      "extra_material_refs" => [],
+      "render_index" => 0
+    }
   end
+
+  defp validate_content(content) when is_binary(content) do
+    if String.trim(content) != "" do
+      {:ok, content}
+    else
+      {:error, "Invalid content: #{inspect(content)}"}
+    end
+  end
+
+  defp validate_content(content), do: {:error, "Invalid content: #{inspect(content)}"}
 end

@@ -68,7 +68,7 @@ defmodule CapcutMcp.CapCut.ProjectStoreTest do
   end
 
   @tag :tmp_dir
-  test "create_project creates directory and files", %{tmp: tmp} do
+  test "create_project creates directory and files" do
     assert {:ok, new_id} = ProjectStore.create_project(%{"name" => "New Project"})
     assert is_binary(new_id)
     {:ok, projects} = ProjectStore.list_projects()

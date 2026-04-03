@@ -130,6 +130,75 @@ defmodule CapcutMcp.ToolsTest do
     assert msg =~ "not found"
   end
 
+  @tag :tmp_dir
+  test "AddText.execute rejects negative track_index", %{project_id: id} do
+    assert {:error, msg} =
+             AddText.execute(%{
+               "project_id" => id,
+               "content" => "Hello World",
+               "start_ms" => 0,
+               "duration_ms" => 2000,
+               "track_index" => -1
+             })
+
+    assert msg =~ "Invalid track index"
+
+    {:ok, draft} = ProjectStore.get_project(id)
+    text_track = Enum.find(draft["tracks"], fn track -> track["id"] == "track-001" end)
+    assert length(text_track["segments"]) == 1
+  end
+
+  @tag :tmp_dir
+  test "AddText.execute rejects negative start_ms", %{project_id: id} do
+    assert {:error, msg} =
+             AddText.execute(%{
+               "project_id" => id,
+               "content" => "Hello World",
+               "start_ms" => -1,
+               "duration_ms" => 2000
+             })
+
+    assert msg =~ "Invalid start_ms"
+
+    {:ok, draft} = ProjectStore.get_project(id)
+    text_track = Enum.find(draft["tracks"], fn track -> track["id"] == "track-001" end)
+    assert length(text_track["segments"]) == 1
+  end
+
+  @tag :tmp_dir
+  test "AddText.execute rejects non-positive duration_ms", %{project_id: id} do
+    assert {:error, msg} =
+             AddText.execute(%{
+               "project_id" => id,
+               "content" => "Hello World",
+               "start_ms" => 0,
+               "duration_ms" => 0
+             })
+
+    assert msg =~ "Invalid duration_ms"
+
+    {:ok, draft} = ProjectStore.get_project(id)
+    text_track = Enum.find(draft["tracks"], fn track -> track["id"] == "track-001" end)
+    assert length(text_track["segments"]) == 1
+  end
+
+  @tag :tmp_dir
+  test "AddText.execute rejects blank content", %{project_id: id} do
+    assert {:error, msg} =
+             AddText.execute(%{
+               "project_id" => id,
+               "content" => "   ",
+               "start_ms" => 0,
+               "duration_ms" => 2000
+             })
+
+    assert msg =~ "Invalid content"
+
+    {:ok, draft} = ProjectStore.get_project(id)
+    text_track = Enum.find(draft["tracks"], fn track -> track["id"] == "track-001" end)
+    assert length(text_track["segments"]) == 1
+  end
+
   alias CapcutMcp.Tools.{AddClip, RemoveClip}
 
   @tag :tmp_dir
@@ -158,6 +227,87 @@ defmodule CapcutMcp.ToolsTest do
     {:ok, draft} = ProjectStore.get_project(id)
     audio_tracks = Enum.filter(draft["tracks"], fn t -> t["type"] == "audio" end)
     assert length(audio_tracks) > 0
+  end
+
+  @tag :tmp_dir
+  test "AddClip.execute rejects out-of-range track_index", %{project_id: id} do
+    assert {:error, msg} =
+             AddClip.execute(%{
+               "project_id" => id,
+               "file_path" => "C:/Users/tspor/Videos/test.mp4",
+               "start_ms" => 0,
+               "duration_ms" => 5000,
+               "track_index" => 99
+             })
+
+    assert msg =~ "Invalid track index"
+
+    {:ok, draft} = ProjectStore.get_project(id)
+    refute Enum.any?(draft["tracks"], fn track -> track["type"] == "video" end)
+  end
+
+  @tag :tmp_dir
+  test "AddClip.execute rejects negative start_ms", %{project_id: id} do
+    assert {:error, msg} =
+             AddClip.execute(%{
+               "project_id" => id,
+               "file_path" => "C:/Users/tspor/Videos/test.mp4",
+               "start_ms" => -1,
+               "duration_ms" => 5000
+             })
+
+    assert msg =~ "Invalid start_ms"
+
+    {:ok, draft} = ProjectStore.get_project(id)
+    refute Enum.any?(draft["tracks"], fn track -> track["type"] == "video" end)
+  end
+
+  @tag :tmp_dir
+  test "AddClip.execute rejects non-positive duration_ms", %{project_id: id} do
+    assert {:error, msg} =
+             AddClip.execute(%{
+               "project_id" => id,
+               "file_path" => "C:/Users/tspor/Videos/test.mp4",
+               "start_ms" => 0,
+               "duration_ms" => 0
+             })
+
+    assert msg =~ "Invalid duration_ms"
+
+    {:ok, draft} = ProjectStore.get_project(id)
+    refute Enum.any?(draft["tracks"], fn track -> track["type"] == "video" end)
+  end
+
+  @tag :tmp_dir
+  test "AddClip.execute rejects blank file_path", %{project_id: id} do
+    assert {:error, msg} =
+             AddClip.execute(%{
+               "project_id" => id,
+               "file_path" => "   ",
+               "start_ms" => 0,
+               "duration_ms" => 5000
+             })
+
+    assert msg =~ "Invalid file_path"
+
+    {:ok, draft} = ProjectStore.get_project(id)
+    refute Enum.any?(draft["tracks"], fn track -> track["type"] == "video" end)
+  end
+
+  @tag :tmp_dir
+  test "AddClip.execute rejects relative file_path", %{project_id: id} do
+    assert {:error, msg} =
+             AddClip.execute(%{
+               "project_id" => id,
+               "file_path" => "videos/test.mp4",
+               "start_ms" => 0,
+               "duration_ms" => 5000
+             })
+
+    assert msg =~ "Invalid file_path"
+
+    {:ok, draft} = ProjectStore.get_project(id)
+    refute Enum.any?(draft["tracks"], fn track -> track["type"] == "video" end)
   end
 
   @tag :tmp_dir

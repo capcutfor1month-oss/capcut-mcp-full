@@ -27,5 +27,14 @@ capcut_mcp-*.tar
 # Temporary files, for example, from tests.
 /tmp/
 
-# Local Claude Code MCP integration settings (machine-specific)
-/.claude/settings.json
+# IDEs and Editors
+/.vscode/
+/.idea/
+*.swp
+*.swo
+.DS_Store
+
+# AI Tools
+/.cursor/
+/.claude/
+.cursorrules

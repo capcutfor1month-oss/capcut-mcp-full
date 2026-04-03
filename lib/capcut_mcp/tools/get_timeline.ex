@@ -17,33 +17,42 @@ defmodule CapcutMcp.Tools.GetTimeline do
   end
 
   def execute(%{"project_id" => id}) do
-    case ProjectStore.get_project(id) do
-      {:ok, draft} ->
-        tracks = draft["tracks"] || []
-        if Enum.empty?(tracks) do
-          {:ok, "Timeline is empty (no tracks)."}
-        else
-          text =
-            tracks
-            |> Enum.with_index(1)
-            |> Enum.map(fn {track, i} ->
-              segments = track["segments"] || []
-              segs =
-                segments
-                |> Enum.map(fn s ->
-                  tr = s["target_timerange"] || %{}
-                  start_ms = div(tr["start"] || 0, 1000)
-                  dur_ms = div(tr["duration"] || 0, 1000)
-                  "    - #{s["id"]} @ #{start_ms}ms for #{dur_ms}ms (material: #{s["material_id"]})"
-                end)
-                |> Enum.join("\n")
-              "Track #{i} [#{track["type"]}] id=#{track["id"]} — #{length(segments)} segment(s):\n#{segs}"
-            end)
-            |> Enum.join("\n\n")
-          {:ok, text}
-        end
+    with {:ok, draft} <- ProjectStore.get_project(id) do
+      tracks = draft["tracks"] || []
+
+      if Enum.empty?(tracks) do
+        {:ok, "Timeline is empty (no tracks)."}
+      else
+        text =
+          tracks
+          |> Enum.with_index(1)
+          |> Enum.map(&format_track/1)
+          |> Enum.join("\n\n")
+
+        {:ok, text}
+      end
+    else
       {:error, :not_found} -> {:error, "Project not found: #{id}"}
       {:error, reason} -> {:error, inspect(reason)}
     end
+  end
+
+  defp format_track({track, index}) do
+    segments = track["segments"] || []
+    
+    formatted_segments =
+      segments
+      |> Enum.map(&format_segment/1)
+      |> Enum.join("\n")
+
+    "Track #{index} [#{track["type"]}] id=#{track["id"]} — #{length(segments)} segment(s):\n#{formatted_segments}"
+  end
+
+  defp format_segment(segment) do
+    timerange = segment["target_timerange"] || %{}
+    start_ms = div(timerange["start"] || 0, 1000)
+    duration_ms = div(timerange["duration"] || 0, 1000)
+    
+    "    - #{segment["id"]} @ #{start_ms}ms for #{duration_ms}ms (material: #{segment["material_id"]})"
   end
 end

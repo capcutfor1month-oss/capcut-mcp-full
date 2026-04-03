@@ -17,10 +17,11 @@ defmodule CapcutMcp.Tools.GetProject do
   end
 
   def execute(%{"project_id" => id}) do
-    case ProjectStore.get_project(id) do
-      {:ok, draft} ->
-        canvas = draft["canvas_config"] || %{}
-        text = """
+    with {:ok, draft} <- ProjectStore.get_project(id) do
+      canvas = draft["canvas_config"] || %{}
+      
+      text =
+        """
         Name: #{draft["name"] || "(unnamed)"}
         ID: #{draft["id"]}
         Canvas: #{canvas["width"]}×#{canvas["height"]} (#{canvas["ratio"]})
@@ -28,8 +29,11 @@ defmodule CapcutMcp.Tools.GetProject do
         Duration: #{draft["duration"]}µs
         Version: #{draft["new_version"]}
         Tracks: #{length(draft["tracks"] || [])}
-        """ |> String.trim()
-        {:ok, text}
+        """
+        |> String.trim()
+
+      {:ok, text}
+    else
       {:error, :not_found} -> {:error, "Project not found: #{id}"}
       {:error, reason} -> {:error, inspect(reason)}
     end

@@ -1,6 +1,12 @@
-# capcut-mcp
+```text
+  ____    _    ____   ____ _   _ _____   __  __  ____ ____  
+ / ___|  / \  |  _ \ / ___| | | |_   _| |  \/  |/ ___|  _ \ 
+| |     / _ \ | |_) | |   | | | | | |   | |\/| | |   | |_) |
+| |___ / ___ \|  __/| |___| |_| | | |   | |  | | |___|  __/ 
+ \____/_/   \_\_|    \____|\___/  |_|   |_|  |_|\____|_|    
+```
 
-An [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) server for CapCut, written in Elixir. Lets Claude read and edit CapCut projects directly — no CapCut API needed. Works by reading and writing CapCut's local JSON project files.
+An [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) server for CapCut, written in Elixir. Lets Claude read and edit CapCut projects directly -- no CapCut API needed. Works by reading and writing CapCut's local JSON project files.
 
 Built just for fun in a "crazy" language. Elixir/OTP with GenServers, supervision trees, pattern matching and pipes everywhere.
 
@@ -19,10 +25,10 @@ Claude gets 7 tools to work with your CapCut projects:
 | `remove_clip` | Remove a clip by its segment ID |
 
 Example prompts once connected:
-- *"List my CapCut projects"*
-- *"Add the text 'Intro' to project X at 0ms for 3 seconds"*
-- *"Show me the timeline of my latest project"*
-- *"Create a new 1080x1920 vertical project called 'Reel'"*
+- "List my CapCut projects"
+- "Add the text 'Intro' to project X at 0ms for 3 seconds"
+- "Show me the timeline of my latest project"
+- "Create a new 1080x1920 vertical project called 'Reel'"
 
 ## Requirements
 
@@ -34,11 +40,11 @@ Example prompts once connected:
 ## Installation
 
 **1. Install Erlang OTP** (if not already installed):
-```
+```bash
 winget install Erlang.ErlangOTP
 ```
 
-**2. Install Elixir** (no winget package — download the zip):
+**2. Install Elixir** (no winget package -- download the zip):
 ```powershell
 (New-Object Net.WebClient).DownloadFile(
   'https://github.com/elixir-lang/elixir/releases/download/v1.19.5/elixir-otp-28.zip',
@@ -54,8 +60,7 @@ Expand-Archive "$env:USERPROFILE\elixir.zip" -DestinationPath "$env:USERPROFILE\
 
 **3. Clone and build:**
 ```bash
-cd C:\Users\<you>\Desktop\kram
-git clone <this-repo> capcut-mcp
+git clone https://github.com/your-username/capcut-mcp.git
 cd capcut-mcp
 mix deps.get
 mix compile
@@ -89,7 +94,7 @@ Create (or edit) `.claude/settings.json` in the project root:
 }
 ```
 
-Restart Claude Code — the `capcut` tools appear automatically.
+Restart Claude Code -- the `capcut` tools appear automatically.
 
 ### Claude Desktop
 
@@ -115,7 +120,7 @@ Restart Claude Desktop.
 ## Configuration
 
 By default the server looks for CapCut projects at:
-```
+```text
 C:\Users\<you>\AppData\Local\CapCut\User Data\Projects\com.lveditor.draft
 ```
 
@@ -126,18 +131,18 @@ CAPCUT_PATH="D:\CapCut\Projects" mix run --no-halt
 
 ## Architecture
 
-```
+```text
 Claude (stdin/stdout JSON-RPC 2.0)
-  └── MCP.Server          GenServer — stdin loop, dispatches messages
-        └── MCP.Dispatcher  Pure — routes tool calls by name
-              └── Tools.*       Pure — one module per tool
-                    └── ProjectStore  GenServer — project cache + disk I/O
-                          ├── Reader  Pure — reads JSON files
-                          └── Writer  Pure — writes JSON files (atomic + backup)
+  └── MCP.Server          GenServer -- stdin loop, dispatches messages
+        └── MCP.Dispatcher  Pure -- routes tool calls by name
+              └── Tools.*       Pure -- one module per tool
+                    └── ProjectStore  GenServer -- project cache + disk I/O
+                          ├── Reader  Pure -- reads JSON files
+                          └── Writer  Pure -- writes JSON files (atomic + backup)
 ```
 
 OTP supervision tree:
-```
+```text
 CapcutMcp.Application
   ├── CapCut.ProjectStore  (permanent)
   └── MCP.Server           (permanent)
@@ -145,7 +150,7 @@ CapcutMcp.Application
 
 If either process crashes, the supervisor restarts it automatically. The `ProjectStore` caches parsed project JSON in memory so tool calls after the first don't re-read the disk.
 
-Every write to `draft_content.json` creates a `.bak` backup and uses an atomic rename (write `.tmp` → rename) to prevent corruption if the process is killed mid-write.
+Every write to `draft_content.json` creates a `.bak` backup and uses an atomic rename (write `.tmp` -> rename) to prevent corruption if the process is killed mid-write.
 
 ## Development
 
@@ -162,13 +167,13 @@ iex -S mix run --no-halt
 
 ## Known Limitations
 
-- **Export/render** — not possible via this server (CapCut has no CLI for export; only UI automation could do it)
-- **Cloud projects** — only local drafts are accessible
-- **Effects and templates** — can reference CapCut's built-in effect IDs but can't create new ones; the exact IDs vary by CapCut version
-- **CapCut format changes** — CapCut updates may change the JSON schema; tested against v8.3.0
+- **Export/render** -- not possible via this server (CapCut has no CLI for export; only UI automation could do it)
+- **Cloud projects** -- only local drafts are accessible
+- **Effects and templates** -- can reference CapCut's built-in effect IDs but can't create new ones; the exact IDs vary by CapCut version
+- **CapCut format changes** -- CapCut updates may change the JSON schema; tested against v8.3.0
 
 ## Tech Stack
 
-- **Elixir 1.19 / OTP 28** — because why not
-- **Jason** — JSON encode/decode
-- **ExUnit** — 35 tests
+- **Elixir 1.19 / OTP 28** -- because why not
+- **Jason** -- JSON encode/decode
+- **ExUnit** -- 44 tests
