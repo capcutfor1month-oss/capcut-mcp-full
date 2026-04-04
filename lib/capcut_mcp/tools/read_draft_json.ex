@@ -3,6 +3,7 @@ defmodule CapcutMcp.Tools.ReadDraftJson do
   @behaviour CapcutMcp.Tool
 
   alias CapcutMcp.CapCut.ProjectStore
+  alias CapcutMcp.Tools.ToolArgs
 
   @impl true
   def definition do
@@ -28,4 +29,7 @@ defmodule CapcutMcp.Tools.ReadDraftJson do
       {:error, reason} -> {:error, inspect(reason)}
     end
   end
+
+  def execute(args),
+    do: {:error, ToolArgs.missing_required_message(args, ["project_id"])}
 end

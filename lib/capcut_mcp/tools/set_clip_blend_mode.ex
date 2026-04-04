@@ -3,7 +3,7 @@ defmodule CapcutMcp.Tools.SetClipBlendMode do
   @behaviour CapcutMcp.Tool
 
   alias CapcutMcp.CapCut.{ProjectStore, BlendModes}
-  alias CapcutMcp.Tools.TimelineHelper
+  alias CapcutMcp.Tools.{TimelineHelper, ToolArgs}
 
   @impl true
   def definition do
@@ -52,6 +52,9 @@ defmodule CapcutMcp.Tools.SetClipBlendMode do
       {:error, reason} -> {:error, inspect(reason)}
     end
   end
+
+  def execute(args),
+    do: {:error, ToolArgs.missing_required_message(args, ["project_id", "clip_id", "mode"])}
 
   defp require_video_segment(%{"clip" => clip}) when is_map(clip), do: :ok
   defp require_video_segment(_), do: {:error, "Cannot set blend mode: only video segments are supported"}

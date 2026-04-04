@@ -3,7 +3,7 @@ defmodule CapcutMcp.Tools.SetClipVolume do
   @behaviour CapcutMcp.Tool
 
   alias CapcutMcp.CapCut.ProjectStore
-  alias CapcutMcp.Tools.TimelineHelper
+  alias CapcutMcp.Tools.{TimelineHelper, ToolArgs}
 
   @impl true
   def definition do
@@ -40,6 +40,9 @@ defmodule CapcutMcp.Tools.SetClipVolume do
       {:error, reason} -> {:error, inspect(reason)}
     end
   end
+
+  def execute(args),
+    do: {:error, ToolArgs.missing_required_message(args, ["project_id", "clip_id", "volume"])}
 
   defp validate_volume(v) when is_number(v) and v >= 0.0, do: {:ok, v}
   defp validate_volume(v), do: {:error, "Invalid volume: #{inspect(v)} (must be >= 0.0)"}

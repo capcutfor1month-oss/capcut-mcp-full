@@ -95,6 +95,18 @@ defmodule CapcutMcp.Tools.TimelineHelper do
     end
   end
 
+  @doc "Ensures a segment timerange field exists as a map merged with defaults."
+  @spec ensure_timerange(map(), String.t(), map()) :: map()
+  def ensure_timerange(segment, key, defaults \\ %{}) when is_binary(key) and is_map(defaults) do
+    timerange =
+      case Map.get(segment, key) do
+        existing when is_map(existing) -> Map.merge(defaults, existing)
+        _ -> defaults
+      end
+
+    Map.put(segment, key, timerange)
+  end
+
   @doc "Validates start_ms and duration_ms."
   def validate_timing(start_ms, duration_ms)
       when is_integer(start_ms) and start_ms >= 0 and is_integer(duration_ms) and duration_ms > 0 do

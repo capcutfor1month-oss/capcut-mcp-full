@@ -231,7 +231,7 @@ defmodule CapcutMcp.ToolsTest do
     assert length(text_track["segments"]) == 1
   end
 
-  alias CapcutMcp.Tools.{AddClip, RemoveClip, ReadDraftJson, SetClipVolume, SetClipLoop, MoveClip, SetClipTransform, SetClipOpacity, TrimClip}
+  alias CapcutMcp.Tools.{AddClip, RemoveClip, ReadDraftJson, SetClipVolume, SetClipLoop, MoveClip, SetClipTransform, SetClipOpacity, TrimClip, SetClipBlendMode}
 
   # ── ReadDraftJson ───────────────────────────────────────────────────────────
 
@@ -304,6 +304,52 @@ defmodule CapcutMcp.ToolsTest do
   test "MoveClip.execute rejects negative start_ms", %{project_id: id} do
     assert {:error, msg} = MoveClip.execute(%{"project_id" => id, "clip_id" => "seg-001", "start_ms" => -1})
     assert msg =~ "Invalid start_ms"
+  end
+
+  @tag :tmp_dir
+  test "MoveClip.execute returns error for missing required arguments" do
+    assert {:error, msg} = MoveClip.execute(%{})
+    assert msg =~ "project_id"
+    assert msg =~ "clip_id"
+    assert msg =~ "start_ms"
+  end
+
+  @tag :tmp_dir
+  test "new tools return errors instead of raising on missing required arguments" do
+    tools = [
+      {ReadDraftJson, ["project_id"]},
+      {SetClipVolume, ["project_id", "clip_id", "volume"]},
+      {SetClipLoop, ["project_id", "clip_id", "loop"]},
+      {SetClipTransform, ["project_id", "clip_id"]},
+      {SetClipOpacity, ["project_id", "clip_id", "opacity"]},
+      {TrimClip, ["project_id", "clip_id"]},
+      {SetClipBlendMode, ["project_id", "clip_id", "mode"]}
+    ]
+
+    Enum.each(tools, fn {tool, required_keys} ->
+      assert {:error, msg} = tool.execute(%{})
+
+      Enum.each(required_keys, fn key ->
+        assert msg =~ key
+      end)
+    end)
+  end
+
+  @tag :tmp_dir
+  test "MoveClip.execute initializes missing target_timerange", %{project_id: id} do
+    {:ok, draft} = ProjectStore.get_project(id)
+    [track] = draft["tracks"]
+    [seg] = track["segments"]
+    seg_with_nil_target = Map.put(seg, "target_timerange", nil)
+    updated_track = Map.put(track, "segments", [seg_with_nil_target])
+    :ok = ProjectStore.update_project(id, %{draft | "tracks" => [updated_track]})
+
+    assert {:ok, _} = MoveClip.execute(%{"project_id" => id, "clip_id" => "seg-001", "start_ms" => 5000})
+
+    {:ok, updated_draft} = ProjectStore.get_project(id)
+    updated_seg = updated_draft["tracks"] |> Enum.flat_map(& &1["segments"]) |> Enum.find(& &1["id"] == "seg-001")
+    assert updated_seg["target_timerange"]["start"] == 5_000_000
+    assert updated_seg["target_timerange"]["duration"] == 3_000_000
   end
 
   # ── SetClipTransform ────────────────────────────────────────────────────────
@@ -388,6 +434,28 @@ defmodule CapcutMcp.ToolsTest do
     seg = draft["tracks"] |> Enum.flat_map(& &1["segments"]) |> Enum.find(& &1["id"] == "seg-001")
     assert seg["source_timerange"]["duration"] == 2_000_000
     assert seg["target_timerange"]["duration"] == 4_000_000
+  end
+
+  @tag :tmp_dir
+  test "TrimClip.execute initializes missing target_timerange", %{project_id: id} do
+    {:ok, draft} = ProjectStore.get_project(id)
+    [track] = draft["tracks"]
+    [seg] = track["segments"]
+    seg_with_nil_target = Map.put(seg, "target_timerange", nil)
+    updated_track = Map.put(track, "segments", [seg_with_nil_target])
+    :ok = ProjectStore.update_project(id, %{draft | "tracks" => [updated_track]})
+
+    assert {:ok, _} =
+             TrimClip.execute(%{
+               "project_id" => id,
+               "clip_id" => "seg-001",
+               "source_duration_ms" => 2000
+             })
+
+    {:ok, updated_draft} = ProjectStore.get_project(id)
+    updated_seg = updated_draft["tracks"] |> Enum.flat_map(& &1["segments"]) |> Enum.find(& &1["id"] == "seg-001")
+    assert updated_seg["target_timerange"]["start"] == 0
+    assert updated_seg["target_timerange"]["duration"] == 2_000_000
   end
 
   @tag :tmp_dir

@@ -3,7 +3,7 @@ defmodule CapcutMcp.Tools.SetClipLoop do
   @behaviour CapcutMcp.Tool
 
   alias CapcutMcp.CapCut.ProjectStore
-  alias CapcutMcp.Tools.TimelineHelper
+  alias CapcutMcp.Tools.{TimelineHelper, ToolArgs}
 
   @impl true
   def definition do
@@ -38,4 +38,7 @@ defmodule CapcutMcp.Tools.SetClipLoop do
   end
 
   def execute(%{"loop" => loop}), do: {:error, "Invalid loop value: #{inspect(loop)} (must be boolean)"}
+
+  def execute(args),
+    do: {:error, ToolArgs.missing_required_message(args, ["project_id", "clip_id", "loop"])}
 end

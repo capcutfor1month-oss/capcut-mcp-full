@@ -3,7 +3,7 @@ defmodule CapcutMcp.Tools.TrimClip do
   @behaviour CapcutMcp.Tool
 
   alias CapcutMcp.CapCut.ProjectStore
-  alias CapcutMcp.Tools.TimelineHelper
+  alias CapcutMcp.Tools.{TimelineHelper, ToolArgs}
 
   @impl true
   def definition do
@@ -58,6 +58,9 @@ defmodule CapcutMcp.Tools.TrimClip do
     end
   end
 
+  def execute(args),
+    do: {:error, ToolArgs.missing_required_message(args, ["project_id", "clip_id"])}
+
   defp apply_trim(seg, source_start, source_dur, target_dur) do
     seg
     |> apply_source(source_start, source_dur)
@@ -78,14 +81,25 @@ defmodule CapcutMcp.Tools.TrimClip do
   end
 
   defp apply_target(seg, source_dur, nil) when is_integer(source_dur) do
-    put_in(seg, ["target_timerange", "duration"], source_dur * 1000)
+    seg
+    |> ensure_target_timerange()
+    |> put_in(["target_timerange", "duration"], source_dur * 1000)
   end
 
   defp apply_target(seg, _source_dur, target_dur) when is_integer(target_dur) do
-    put_in(seg, ["target_timerange", "duration"], target_dur * 1000)
+    seg
+    |> ensure_target_timerange()
+    |> put_in(["target_timerange", "duration"], target_dur * 1000)
   end
 
   defp apply_target(seg, _source_dur, _target_dur), do: seg
+
+  defp ensure_target_timerange(seg) do
+    TimelineHelper.ensure_timerange(seg, "target_timerange", %{
+      "start" => 0,
+      "duration" => get_in(seg, ["source_timerange", "duration"]) || 0
+    })
+  end
 
   defp validate_optional_timing(nil, _), do: :ok
   defp validate_optional_timing(v, _) when is_integer(v) and v >= 0, do: :ok

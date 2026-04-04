@@ -3,7 +3,7 @@ defmodule CapcutMcp.Tools.MoveClip do
   @behaviour CapcutMcp.Tool
 
   alias CapcutMcp.CapCut.ProjectStore
-  alias CapcutMcp.Tools.TimelineHelper
+  alias CapcutMcp.Tools.{TimelineHelper, ToolArgs}
 
   @impl true
   def definition do
@@ -32,7 +32,9 @@ defmodule CapcutMcp.Tools.MoveClip do
     with {:ok, draft} <- ProjectStore.get_project(id),
          {:ok, updated_draft} <-
            TimelineHelper.update_segment(draft, clip_id, fn seg ->
-             put_in(seg, ["target_timerange", "start"], start_ms * 1000)
+             seg
+             |> TimelineHelper.ensure_timerange("target_timerange", target_timerange_defaults(seg))
+             |> put_in(["target_timerange", "start"], start_ms * 1000)
            end),
          :ok <- ProjectStore.update_project(id, updated_draft) do
       {:ok, "Clip #{clip_id} moved to #{start_ms}ms."}
@@ -45,4 +47,14 @@ defmodule CapcutMcp.Tools.MoveClip do
 
   def execute(%{"start_ms" => start_ms}),
     do: {:error, "Invalid start_ms: #{inspect(start_ms)} (must be integer >= 0)"}
+
+  def execute(args),
+    do: {:error, ToolArgs.missing_required_message(args, ["project_id", "clip_id", "start_ms"])}
+
+  defp target_timerange_defaults(seg) do
+    %{
+      "start" => 0,
+      "duration" => get_in(seg, ["source_timerange", "duration"]) || 0
+    }
+  end
 end

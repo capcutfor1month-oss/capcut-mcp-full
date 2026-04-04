@@ -4,8 +4,6 @@ defmodule CapcutMcp.CapCut.BlendModes do
   Reads MixMode.json from the CapCut Resources directory and provides lookup by name.
   """
 
-  @capcut_apps_path "C:/Users/tspor/AppData/Local/CapCut/Apps"
-
   @name_labels %{
     "soft_light" => "Soft Light",
     "multiply_blend_mode" => "Multiply",
@@ -52,31 +50,24 @@ defmodule CapcutMcp.CapCut.BlendModes do
   end
 
   defp find_mix_mode_dir do
-    apps_path =
-      System.get_env("CAPCUT_APPS_PATH") || @capcut_apps_path
+    with {:ok, apps_path} <- apps_path() do
+      case File.ls(apps_path) do
+        {:ok, entries} ->
+          case latest_version_dir(entries) do
+            nil ->
+              {:error, "No CapCut version found in #{apps_path}"}
 
-    case File.ls(apps_path) do
-      {:ok, entries} ->
-        version_dir =
-          entries
-          |> Enum.filter(&Regex.match?(~r/^\d+\./, &1))
-          |> Enum.sort(:desc)
-          |> List.first()
+            dir ->
+              mix_mode_dir = Path.join([apps_path, dir, "Resources", "MixMode"])
 
-        case version_dir do
-          nil ->
-            {:error, "No CapCut version found in #{apps_path}"}
+              if File.dir?(mix_mode_dir),
+                do: {:ok, mix_mode_dir},
+                else: {:error, "MixMode directory not found: #{mix_mode_dir}"}
+          end
 
-          dir ->
-            mix_mode_dir = Path.join([apps_path, dir, "Resources", "MixMode"])
-
-            if File.dir?(mix_mode_dir),
-              do: {:ok, mix_mode_dir},
-              else: {:error, "MixMode directory not found: #{mix_mode_dir}"}
-        end
-
-      {:error, reason} ->
-        {:error, "Cannot read CapCut apps directory #{apps_path}: #{inspect(reason)}"}
+        {:error, reason} ->
+          {:error, "Cannot read CapCut apps directory #{apps_path}: #{inspect(reason)}"}
+      end
     end
   end
 
@@ -101,6 +92,38 @@ defmodule CapcutMcp.CapCut.BlendModes do
         end)
 
       {:ok, modes}
+    end
+  end
+
+  defp apps_path do
+    cond do
+      present_env?("CAPCUT_APPS_PATH") ->
+        {:ok, System.fetch_env!("CAPCUT_APPS_PATH")}
+
+      present_env?("LOCALAPPDATA") ->
+        {:ok, Path.join([System.fetch_env!("LOCALAPPDATA"), "CapCut", "Apps"])}
+
+      true ->
+        {:error, "CapCut apps directory not configured. Set CAPCUT_APPS_PATH or LOCALAPPDATA."}
+    end
+  end
+
+  defp latest_version_dir(entries) do
+    entries
+    |> Enum.filter(&Regex.match?(~r/^\d+(?:\.\d+)+$/, &1))
+    |> Enum.max_by(&version_key/1, fn -> nil end)
+  end
+
+  defp version_key(version) do
+    version
+    |> String.split(".")
+    |> Enum.map(&String.to_integer/1)
+  end
+
+  defp present_env?(name) do
+    case System.get_env(name) do
+      value when is_binary(value) -> String.trim(value) != ""
+      _ -> false
     end
   end
 end

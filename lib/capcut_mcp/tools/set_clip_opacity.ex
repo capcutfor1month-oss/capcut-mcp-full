@@ -3,7 +3,7 @@ defmodule CapcutMcp.Tools.SetClipOpacity do
   @behaviour CapcutMcp.Tool
 
   alias CapcutMcp.CapCut.ProjectStore
-  alias CapcutMcp.Tools.TimelineHelper
+  alias CapcutMcp.Tools.{TimelineHelper, ToolArgs}
 
   @impl true
   def definition do
@@ -44,6 +44,9 @@ defmodule CapcutMcp.Tools.SetClipOpacity do
       {:error, reason} -> {:error, inspect(reason)}
     end
   end
+
+  def execute(args),
+    do: {:error, ToolArgs.missing_required_message(args, ["project_id", "clip_id", "opacity"])}
 
   defp require_clip(%{"clip" => clip}) when is_map(clip), do: :ok
   defp require_clip(_), do: {:error, "Cannot set opacity: segment has no clip object (audio segments are not supported)"}
