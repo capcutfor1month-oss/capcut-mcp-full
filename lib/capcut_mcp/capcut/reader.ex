@@ -34,8 +34,6 @@ defmodule CapcutMcp.CapCut.Reader do
     json_file = Path.join(draft_path, "draft_content.json")
 
     with {:ok, content} <- File.read(json_file),
-         {:ok, data} <- Jason.decode(content) do
-      {:ok, data}
-    end
+         do: Jason.decode(content)
   end
 end

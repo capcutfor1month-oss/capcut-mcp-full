@@ -6,9 +6,8 @@ defmodule CapcutMcp.CapCut.Writer do
   def write_draft(draft_path, content) do
     json_file = Path.join(draft_path, "draft_content.json")
 
-    with {:ok, encoded} <- Jason.encode(content) do
-      atomic_write(json_file, encoded, backup: true)
-    end
+    with {:ok, encoded} <- Jason.encode(content),
+         do: atomic_write(json_file, encoded, backup: true)
   end
 
   @doc "Writes root_meta_info.json atomically."
@@ -16,9 +15,8 @@ defmodule CapcutMcp.CapCut.Writer do
   def write_root_meta(root_path, data) do
     meta_file = Path.join(root_path, "root_meta_info.json")
 
-    with {:ok, encoded} <- Jason.encode(data) do
-      atomic_write(meta_file, encoded, backup: false)
-    end
+    with {:ok, encoded} <- Jason.encode(data),
+         do: atomic_write(meta_file, encoded, backup: false)
   end
 
   defp atomic_write(target, content, opts) do

@@ -18,15 +18,15 @@ defmodule CapcutMcp.MCP.Server do
 
   @impl true
   def handle_info({:line, line}, state) do
-    case Protocol.decode_message(line) do
-      {:ok, msg} ->
-        case Dispatcher.dispatch(msg) do
-          nil -> :ok
-          response -> IO.puts(response)
-        end
-
+    with {:ok, msg} <- Protocol.decode_message(line),
+         response when not is_nil(response) <- Dispatcher.dispatch(msg) do
+      IO.puts(response)
+    else
       {:error, _} ->
         IO.puts(Protocol.encode_error(nil, -32700, "Parse error"))
+
+      nil ->
+        :ok
     end
 
     {:noreply, state}
