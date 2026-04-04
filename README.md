@@ -39,7 +39,7 @@ Claude gets 15 tools to work with your CapCut projects:
 | `set_clip_opacity` | Set clip transparency (0.0 -- 1.0) |
 | `set_clip_volume` | Mute, normalize, or boost clip audio |
 | `set_clip_loop` | Enable/disable clip looping |
-| `set_clip_blend_mode` | Apply blend modes (Screen, Soft Light, Multiply, ...) |
+| `set_clip_blend_mode` | Apply blend modes (Screen, Soft Light, Multiply, ...) from your local CapCut install |
 | `move_clip` | Reposition a clip on the timeline |
 | `trim_clip` | Set source in/out points and timeline duration |
 | `remove_clip` | Remove a clip by its segment ID |
@@ -157,6 +157,19 @@ Override with the `CAPCUT_PATH` environment variable:
 CAPCUT_PATH="D:\CapCut\Projects" mix run --no-halt
 ```
 
+Blend mode discovery reads CapCut's local app resources from:
+```text
+C:\Users\<you>\AppData\Local\CapCut\Apps
+```
+
+Usually you do not need to configure this manually on Windows because it is derived from `%LOCALAPPDATA%`.
+If your CapCut installation lives elsewhere, override it with `CAPCUT_APPS_PATH`:
+```bash
+CAPCUT_APPS_PATH="D:\PortableApps\CapCut\Apps" mix run --no-halt
+```
+
+Tool calls with missing required fields or incomplete segment timeranges now return normal MCP errors instead of crashing the server process.
+
 ## Architecture
 
 ```text
@@ -206,4 +219,4 @@ iex -S mix run --no-halt
 
 - **Elixir 1.19 / OTP 28** -- because why not
 - **Jason** -- JSON encode/decode
-- **ExUnit** -- 68 tests
+- **ExUnit** -- 73 tests
