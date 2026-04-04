@@ -1,5 +1,7 @@
 import Config
 
+config :logger, level: :none
+
 if config_env() == :test do
   config :capcut_mcp,
     start_mcp_server: false,

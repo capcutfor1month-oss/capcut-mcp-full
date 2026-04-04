@@ -98,18 +98,23 @@ Restart Claude Code -- the `capcut` tools appear automatically.
 
 ### Claude Desktop
 
-Edit `%APPDATA%\Claude\claude_desktop_config.json`:
+Claude Desktop ignores the `cwd` config field on Windows, so `mix run` wouldn't find `mix.exs`. The fix is a small wrapper script that changes into the project directory first.
+
+The repo ships a `start-mcp.bat` that does exactly that. Edit it to point at your Elixir installation if it differs from the default:
+
+```bat
+@echo off
+cd /d "C:\Users\<you>\Desktop\kram\capcut-mcp"
+"C:\Users\<you>\elixir\bin\mix.bat" run --no-halt
+```
+
+Then add it to `%APPDATA%\Claude\claude_desktop_config.json`:
 
 ```json
 {
   "mcpServers": {
     "capcut": {
-      "command": "mix",
-      "args": ["run", "--no-halt"],
-      "cwd": "C:/Users/<you>/Desktop/kram/capcut-mcp",
-      "env": {
-        "PATH": "C:\\Program Files\\Erlang OTP\\bin;C:\\Users\\<you>\\elixir\\bin"
-      }
+      "command": "C:\\Users\\<you>\\Desktop\\kram\\capcut-mcp\\start-mcp.bat"
     }
   }
 }
