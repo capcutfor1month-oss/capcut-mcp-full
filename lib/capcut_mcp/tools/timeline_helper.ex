@@ -61,6 +61,40 @@ defmodule CapcutMcp.Tools.TimelineHelper do
 
   def validate_track_index(_tracks, idx), do: {:error, "Invalid track index: #{inspect(idx)}"}
 
+  @doc "Finds a segment by ID across all tracks. Returns {:ok, {track_idx, seg_idx, segment}} or error."
+  @spec find_segment(map(), String.t()) ::
+          {:ok, {non_neg_integer(), non_neg_integer(), map()}} | {:error, String.t()}
+  def find_segment(draft, segment_id) do
+    tracks = draft["tracks"] || []
+
+    result =
+      Enum.reduce_while(tracks |> Enum.with_index(), nil, fn {track, t_idx}, _acc ->
+        case Enum.find_index(track["segments"] || [], &(&1["id"] == segment_id)) do
+          nil -> {:cont, nil}
+          s_idx -> {:halt, {t_idx, s_idx, Enum.at(track["segments"], s_idx)}}
+        end
+      end)
+
+    case result do
+      nil -> {:error, "Segment not found: #{segment_id}"}
+      tuple -> {:ok, tuple}
+    end
+  end
+
+  @doc "Updates a segment in-place by ID. Applies update_fn to the found segment and returns the updated draft."
+  @spec update_segment(map(), String.t(), (map() -> map())) :: {:ok, map()} | {:error, String.t()}
+  def update_segment(draft, segment_id, update_fn) do
+    with {:ok, {t_idx, s_idx, segment}} <- find_segment(draft, segment_id) do
+      updated_segment = update_fn.(segment)
+      tracks = draft["tracks"]
+      track = Enum.at(tracks, t_idx)
+      updated_segments = List.replace_at(track["segments"], s_idx, updated_segment)
+      updated_track = Map.put(track, "segments", updated_segments)
+      updated_tracks = List.replace_at(tracks, t_idx, updated_track)
+      {:ok, Map.put(draft, "tracks", updated_tracks)}
+    end
+  end
+
   @doc "Validates start_ms and duration_ms."
   def validate_timing(start_ms, duration_ms)
       when is_integer(start_ms) and start_ms >= 0 and is_integer(duration_ms) and duration_ms > 0 do

@@ -12,16 +12,36 @@ Built just for fun in a "crazy" language. Elixir/OTP with GenServers, supervisio
 
 ## What it does
 
-Claude gets 7 tools to work with your CapCut projects:
+Claude gets 15 tools to work with your CapCut projects:
+
+**Read & Inspect**
 
 | Tool | What Claude can do |
 |------|--------------------|
 | `list_projects` | Show all your CapCut drafts |
 | `get_project` | Inspect canvas size, FPS, duration, track count |
 | `get_timeline` | See all tracks, clips, and their timecodes |
+| `read_draft_json` | Return the full raw project JSON for debugging |
+
+**Create & Add**
+
+| Tool | What Claude can do |
+|------|--------------------|
 | `create_project` | Create a new empty draft (custom size/FPS) |
 | `add_text` | Add a text overlay at a specific time |
 | `add_clip` | Add a video or audio file to the timeline |
+
+**Modify Clips**
+
+| Tool | What Claude can do |
+|------|--------------------|
+| `set_clip_transform` | Position, scale, and rotate a clip |
+| `set_clip_opacity` | Set clip transparency (0.0 -- 1.0) |
+| `set_clip_volume` | Mute, normalize, or boost clip audio |
+| `set_clip_loop` | Enable/disable clip looping |
+| `set_clip_blend_mode` | Apply blend modes (Screen, Soft Light, Multiply, ...) |
+| `move_clip` | Reposition a clip on the timeline |
+| `trim_clip` | Set source in/out points and timeline duration |
 | `remove_clip` | Remove a clip by its segment ID |
 
 Example prompts once connected:
@@ -29,6 +49,9 @@ Example prompts once connected:
 - "Add the text 'Intro' to project X at 0ms for 3 seconds"
 - "Show me the timeline of my latest project"
 - "Create a new 1080x1920 vertical project called 'Reel'"
+- "Set the screen recording clip to Screen blend mode"
+- "Move clip X to 5 seconds and set its opacity to 0.8"
+- "Mute the video on track 2 and loop the mascot clip"
 
 ## Requirements
 
@@ -140,8 +163,10 @@ CAPCUT_PATH="D:\CapCut\Projects" mix run --no-halt
 Claude (stdin/stdout JSON-RPC 2.0)
   └── MCP.Server          GenServer -- stdin loop, dispatches messages
         └── MCP.Dispatcher  Pure -- routes tool calls by name
-              └── Tools.*       Pure -- one module per tool
-                    └── ProjectStore  GenServer -- project cache + disk I/O
+              └── Tools.*       Pure -- one module per tool (15 tools)
+                    ├── TimelineHelper  Shared -- segment lookup, validation, UUID
+                    ├── BlendModes      Pure -- discovers CapCut MixMode resources
+                    └── ProjectStore    GenServer -- project cache + disk I/O
                           ├── Reader  Pure -- reads JSON files
                           └── Writer  Pure -- writes JSON files (atomic + backup)
 ```
@@ -181,4 +206,4 @@ iex -S mix run --no-halt
 
 - **Elixir 1.19 / OTP 28** -- because why not
 - **Jason** -- JSON encode/decode
-- **ExUnit** -- 44 tests
+- **ExUnit** -- 68 tests

@@ -231,7 +231,164 @@ defmodule CapcutMcp.ToolsTest do
     assert length(text_track["segments"]) == 1
   end
 
-  alias CapcutMcp.Tools.{AddClip, RemoveClip}
+  alias CapcutMcp.Tools.{AddClip, RemoveClip, ReadDraftJson, SetClipVolume, SetClipLoop, MoveClip, SetClipTransform, SetClipOpacity, TrimClip}
+
+  # ── ReadDraftJson ───────────────────────────────────────────────────────────
+
+  @tag :tmp_dir
+  test "ReadDraftJson.execute returns valid JSON", %{project_id: id} do
+    assert {:ok, text} = ReadDraftJson.execute(%{"project_id" => id})
+    assert {:ok, _} = Jason.decode(text)
+  end
+
+  @tag :tmp_dir
+  test "ReadDraftJson.execute returns error for unknown project" do
+    assert {:error, msg} = ReadDraftJson.execute(%{"project_id" => "NOPE"})
+    assert msg =~ "not found"
+  end
+
+  # ── SetClipVolume ───────────────────────────────────────────────────────────
+
+  @tag :tmp_dir
+  test "SetClipVolume.execute sets volume on a segment", %{project_id: id} do
+    assert {:ok, _} = SetClipVolume.execute(%{"project_id" => id, "clip_id" => "seg-001", "volume" => 0.5})
+    {:ok, draft} = ProjectStore.get_project(id)
+    seg = draft["tracks"] |> Enum.flat_map(& &1["segments"]) |> Enum.find(& &1["id"] == "seg-001")
+    assert seg["volume"] == 0.5
+  end
+
+  @tag :tmp_dir
+  test "SetClipVolume.execute allows volume above 1.0", %{project_id: id} do
+    assert {:ok, _} = SetClipVolume.execute(%{"project_id" => id, "clip_id" => "seg-001", "volume" => 5.0})
+    {:ok, draft} = ProjectStore.get_project(id)
+    seg = draft["tracks"] |> Enum.flat_map(& &1["segments"]) |> Enum.find(& &1["id"] == "seg-001")
+    assert seg["volume"] == 5.0
+  end
+
+  @tag :tmp_dir
+  test "SetClipVolume.execute rejects negative volume", %{project_id: id} do
+    assert {:error, msg} = SetClipVolume.execute(%{"project_id" => id, "clip_id" => "seg-001", "volume" => -1.0})
+    assert msg =~ "Invalid volume"
+  end
+
+  # ── SetClipLoop ─────────────────────────────────────────────────────────────
+
+  @tag :tmp_dir
+  test "SetClipLoop.execute enables loop", %{project_id: id} do
+    assert {:ok, _} = SetClipLoop.execute(%{"project_id" => id, "clip_id" => "seg-001", "loop" => true})
+    {:ok, draft} = ProjectStore.get_project(id)
+    seg = draft["tracks"] |> Enum.flat_map(& &1["segments"]) |> Enum.find(& &1["id"] == "seg-001")
+    assert seg["is_loop"] == true
+  end
+
+  @tag :tmp_dir
+  test "SetClipLoop.execute disables loop", %{project_id: id} do
+    SetClipLoop.execute(%{"project_id" => id, "clip_id" => "seg-001", "loop" => true})
+    assert {:ok, _} = SetClipLoop.execute(%{"project_id" => id, "clip_id" => "seg-001", "loop" => false})
+    {:ok, draft} = ProjectStore.get_project(id)
+    seg = draft["tracks"] |> Enum.flat_map(& &1["segments"]) |> Enum.find(& &1["id"] == "seg-001")
+    assert seg["is_loop"] == false
+  end
+
+  # ── MoveClip ────────────────────────────────────────────────────────────────
+
+  @tag :tmp_dir
+  test "MoveClip.execute moves a segment to new start position", %{project_id: id} do
+    assert {:ok, _} = MoveClip.execute(%{"project_id" => id, "clip_id" => "seg-001", "start_ms" => 5000})
+    {:ok, draft} = ProjectStore.get_project(id)
+    seg = draft["tracks"] |> Enum.flat_map(& &1["segments"]) |> Enum.find(& &1["id"] == "seg-001")
+    assert seg["target_timerange"]["start"] == 5_000_000
+  end
+
+  @tag :tmp_dir
+  test "MoveClip.execute rejects negative start_ms", %{project_id: id} do
+    assert {:error, msg} = MoveClip.execute(%{"project_id" => id, "clip_id" => "seg-001", "start_ms" => -1})
+    assert msg =~ "Invalid start_ms"
+  end
+
+  # ── SetClipTransform ────────────────────────────────────────────────────────
+
+  @tag :tmp_dir
+  test "SetClipTransform.execute sets transform on video clip", %{project_id: id} do
+    # First add a video clip (which has a clip object)
+    {:ok, msg} = AddClip.execute(%{"project_id" => id, "file_path" => "C:/test.mp4", "start_ms" => 0, "duration_ms" => 5000})
+    seg_id = msg |> String.split("\n") |> Enum.find(& &1 =~ "Segment ID") |> String.split(": ") |> List.last()
+
+    assert {:ok, _} = SetClipTransform.execute(%{"project_id" => id, "clip_id" => seg_id, "x" => 0.5, "scale_x" => 2.0})
+    {:ok, draft} = ProjectStore.get_project(id)
+    seg = draft["tracks"] |> Enum.flat_map(& &1["segments"]) |> Enum.find(& &1["id"] == seg_id)
+    assert seg["clip"]["transform"]["x"] == 0.5
+    assert seg["clip"]["scale"]["x"] == 2.0
+    # Unchanged values preserved
+    assert seg["clip"]["transform"]["y"] == 0.0
+    assert seg["clip"]["scale"]["y"] == 1.0
+  end
+
+  @tag :tmp_dir
+  test "SetClipTransform.execute rejects text segment without clip", %{project_id: id} do
+    assert {:error, msg} = SetClipTransform.execute(%{"project_id" => id, "clip_id" => "seg-001", "x" => 0.5})
+    assert msg =~ "no clip object"
+  end
+
+  # ── SetClipOpacity ──────────────────────────────────────────────────────────
+
+  @tag :tmp_dir
+  test "SetClipOpacity.execute sets opacity on video clip", %{project_id: id} do
+    {:ok, msg} = AddClip.execute(%{"project_id" => id, "file_path" => "C:/test.mp4", "start_ms" => 0, "duration_ms" => 5000})
+    seg_id = msg |> String.split("\n") |> Enum.find(& &1 =~ "Segment ID") |> String.split(": ") |> List.last()
+
+    assert {:ok, _} = SetClipOpacity.execute(%{"project_id" => id, "clip_id" => seg_id, "opacity" => 0.3})
+    {:ok, draft} = ProjectStore.get_project(id)
+    seg = draft["tracks"] |> Enum.flat_map(& &1["segments"]) |> Enum.find(& &1["id"] == seg_id)
+    assert seg["clip"]["alpha"] == 0.3
+  end
+
+  @tag :tmp_dir
+  test "SetClipOpacity.execute rejects out-of-range opacity", %{project_id: id} do
+    {:ok, msg} = AddClip.execute(%{"project_id" => id, "file_path" => "C:/test.mp4", "start_ms" => 0, "duration_ms" => 5000})
+    seg_id = msg |> String.split("\n") |> Enum.find(& &1 =~ "Segment ID") |> String.split(": ") |> List.last()
+
+    assert {:error, msg} = SetClipOpacity.execute(%{"project_id" => id, "clip_id" => seg_id, "opacity" => 1.5})
+    assert msg =~ "Invalid opacity"
+  end
+
+  @tag :tmp_dir
+  test "SetClipOpacity.execute rejects text segment without clip", %{project_id: id} do
+    assert {:error, msg} = SetClipOpacity.execute(%{"project_id" => id, "clip_id" => "seg-001", "opacity" => 0.5})
+    assert msg =~ "no clip object"
+  end
+
+  # ── TrimClip ────────────────────────────────────────────────────────────────
+
+  @tag :tmp_dir
+  test "TrimClip.execute trims source and target", %{project_id: id} do
+    assert {:ok, _} = TrimClip.execute(%{
+      "project_id" => id,
+      "clip_id" => "seg-001",
+      "source_start_ms" => 1000,
+      "source_duration_ms" => 2000
+    })
+    {:ok, draft} = ProjectStore.get_project(id)
+    seg = draft["tracks"] |> Enum.flat_map(& &1["segments"]) |> Enum.find(& &1["id"] == "seg-001")
+    assert seg["source_timerange"]["start"] == 1_000_000
+    assert seg["source_timerange"]["duration"] == 2_000_000
+    # target_duration matches source when target_duration_ms not given
+    assert seg["target_timerange"]["duration"] == 2_000_000
+  end
+
+  @tag :tmp_dir
+  test "TrimClip.execute allows independent target duration", %{project_id: id} do
+    assert {:ok, _} = TrimClip.execute(%{
+      "project_id" => id,
+      "clip_id" => "seg-001",
+      "source_duration_ms" => 2000,
+      "target_duration_ms" => 4000
+    })
+    {:ok, draft} = ProjectStore.get_project(id)
+    seg = draft["tracks"] |> Enum.flat_map(& &1["segments"]) |> Enum.find(& &1["id"] == "seg-001")
+    assert seg["source_timerange"]["duration"] == 2_000_000
+    assert seg["target_timerange"]["duration"] == 4_000_000
+  end
 
   @tag :tmp_dir
   test "AddClip.execute adds a video segment", %{project_id: id} do

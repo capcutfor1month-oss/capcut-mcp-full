@@ -9,10 +9,34 @@ defmodule CapcutMcp.MCP.Dispatcher do
     CreateProject,
     AddText,
     AddClip,
-    RemoveClip
+    RemoveClip,
+    ReadDraftJson,
+    SetClipVolume,
+    SetClipLoop,
+    MoveClip,
+    SetClipTransform,
+    SetClipOpacity,
+    TrimClip,
+    SetClipBlendMode
   }
 
-  @tools [ListProjects, GetProject, GetTimeline, CreateProject, AddText, AddClip, RemoveClip]
+  @tools [
+    ListProjects,
+    GetProject,
+    GetTimeline,
+    CreateProject,
+    AddText,
+    AddClip,
+    RemoveClip,
+    ReadDraftJson,
+    SetClipVolume,
+    SetClipLoop,
+    MoveClip,
+    SetClipTransform,
+    SetClipOpacity,
+    TrimClip,
+    SetClipBlendMode
+  ]
 
   def dispatch(%{"method" => "initialize", "id" => id}) do
     Protocol.encode_response(id, %{
