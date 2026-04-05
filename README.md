@@ -29,7 +29,7 @@ Claude gets 15 tools to work with your CapCut projects:
 |------|--------------------|
 | `create_project` | Create a new empty draft (custom size/FPS) |
 | `add_text` | Add a text overlay at a specific time |
-| `add_clip` | Add a video or audio file to the timeline |
+| `add_clip` | Add a video or audio file to the timeline (validates file exists) |
 
 **Modify Clips**
 
@@ -83,7 +83,7 @@ Expand-Archive "$env:USERPROFILE\elixir.zip" -DestinationPath "$env:USERPROFILE\
 
 **3. Clone and build:**
 ```bash
-git clone https://github.com/your-username/capcut-mcp.git
+git clone https://github.com/burnshall-ui/capcut-mcp.git
 cd capcut-mcp
 mix deps.get
 mix compile
@@ -168,8 +168,6 @@ If your CapCut installation lives elsewhere, override it with `CAPCUT_APPS_PATH`
 CAPCUT_APPS_PATH="D:\PortableApps\CapCut\Apps" mix run --no-halt
 ```
 
-Tool calls with missing required fields or incomplete segment timeranges now return normal MCP errors instead of crashing the server process.
-
 ## Architecture
 
 ```text
@@ -178,7 +176,7 @@ Claude (stdin/stdout JSON-RPC 2.0)
         └── MCP.Dispatcher  Pure -- routes tool calls by name
               └── Tools.*       Pure -- one module per tool (15 tools)
                     ├── TimelineHelper  Shared -- segment lookup, validation, UUID
-                    ├── BlendModes      Pure -- discovers CapCut MixMode resources
+                    ├── BlendModes      ETS-cached -- discovers CapCut MixMode resources
                     └── ProjectStore    GenServer -- project cache + disk I/O
                           ├── Reader  Pure -- reads JSON files
                           └── Writer  Pure -- writes JSON files (atomic + backup)
@@ -191,7 +189,7 @@ CapcutMcp.Application
   └── MCP.Server           (permanent)
 ```
 
-If either process crashes, the supervisor restarts it automatically. The `ProjectStore` caches parsed project JSON in memory so tool calls after the first don't re-read the disk.
+If either process crashes, the supervisor restarts it automatically. The `ProjectStore` caches parsed project JSON in memory with read-through loading -- both reads and writes auto-populate the cache on miss, so a GenServer restart is transparent. `BlendModes` caches `MixMode.json` in an ETS table after the first read.
 
 Every write to `draft_content.json` creates a `.bak` backup and uses an atomic rename (write `.tmp` -> rename) to prevent corruption if the process is killed mid-write.
 
