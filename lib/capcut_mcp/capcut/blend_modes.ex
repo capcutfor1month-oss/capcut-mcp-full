@@ -80,9 +80,9 @@ defmodule CapcutMcp.CapCut.BlendModes do
   end
 
   defp ensure_ets do
-    unless ets_exists?() do
-      :ets.new(@ets_table, [:set, :public, :named_table, read_concurrency: true])
-    end
+    :ets.new(@ets_table, [:set, :public, :named_table, read_concurrency: true])
+  rescue
+    ArgumentError -> :ok
   end
 
   defp ets_exists?, do: :ets.whereis(@ets_table) != :undefined
