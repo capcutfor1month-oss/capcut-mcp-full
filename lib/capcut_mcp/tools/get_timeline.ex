@@ -3,6 +3,7 @@ defmodule CapcutMcp.Tools.GetTimeline do
   @behaviour CapcutMcp.Tool
 
   alias CapcutMcp.CapCut.ProjectStore
+  alias CapcutMcp.Tools.ToolArgs
 
   @impl true
   def definition do
@@ -36,10 +37,8 @@ defmodule CapcutMcp.Tools.GetTimeline do
 
         {:ok, text}
       end
-    else
-      {:error, :not_found} -> {:error, "Project not found: #{id}"}
-      {:error, reason} -> {:error, inspect(reason)}
     end
+    |> ToolArgs.format_tool_result(id)
   end
 
   defp format_track({track, index}) do

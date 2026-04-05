@@ -51,11 +51,8 @@ defmodule CapcutMcp.Tools.TrimClip do
            end),
          :ok <- ProjectStore.update_project(id, updated_draft) do
       {:ok, "Clip #{clip_id} trimmed."}
-    else
-      {:error, :not_found} -> {:error, "Project not found: #{id}"}
-      {:error, reason} when is_binary(reason) -> {:error, reason}
-      {:error, reason} -> {:error, inspect(reason)}
     end
+    |> ToolArgs.format_tool_result(id)
   end
 
   def execute(args),
@@ -71,11 +68,8 @@ defmodule CapcutMcp.Tools.TrimClip do
 
   defp apply_source(seg, source_start, source_dur) do
     sr = seg["source_timerange"] || %{"start" => 0, "duration" => 0}
-
-    sr =
-      sr
-      |> then(fn sr -> if source_start, do: Map.put(sr, "start", source_start * 1000), else: sr end)
-      |> then(fn sr -> if source_dur, do: Map.put(sr, "duration", source_dur * 1000), else: sr end)
+    sr = if source_start, do: Map.put(sr, "start", source_start * 1000), else: sr
+    sr = if source_dur, do: Map.put(sr, "duration", source_dur * 1000), else: sr
 
     Map.put(seg, "source_timerange", sr)
   end

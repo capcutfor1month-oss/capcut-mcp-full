@@ -3,7 +3,7 @@ defmodule CapcutMcp.Tools.AddText do
   @behaviour CapcutMcp.Tool
 
   alias CapcutMcp.CapCut.ProjectStore
-  alias CapcutMcp.Tools.TimelineHelper
+  alias CapcutMcp.Tools.{TimelineHelper, ToolArgs}
 
   @impl true
   def definition do
@@ -44,11 +44,8 @@ defmodule CapcutMcp.Tools.AddText do
          :ok <- ProjectStore.update_project(id, updated_draft) do
       {:ok,
        "Text added.\nSegment ID: #{segment_id}\nTrack index: #{track_idx}\nContent: \"#{content}\"\nTime: #{start_ms}ms → #{start_ms + duration_ms}ms"}
-    else
-      {:error, :not_found} -> {:error, "Project not found: #{id}"}
-      {:error, reason} when is_binary(reason) -> {:error, reason}
-      {:error, reason} -> {:error, inspect(reason)}
     end
+    |> ToolArgs.format_tool_result(id)
   end
 
   defp apply_text_to_draft(draft, content, start_ms, duration_ms, track_index) do

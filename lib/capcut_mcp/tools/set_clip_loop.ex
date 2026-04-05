@@ -30,11 +30,8 @@ defmodule CapcutMcp.Tools.SetClipLoop do
            TimelineHelper.update_segment(draft, clip_id, &Map.put(&1, "is_loop", loop)),
          :ok <- ProjectStore.update_project(id, updated_draft) do
       {:ok, "Loop #{if loop, do: "enabled", else: "disabled"} on segment #{clip_id}."}
-    else
-      {:error, :not_found} -> {:error, "Project not found: #{id}"}
-      {:error, reason} when is_binary(reason) -> {:error, reason}
-      {:error, reason} -> {:error, inspect(reason)}
     end
+    |> ToolArgs.format_tool_result(id)
   end
 
   def execute(%{"loop" => loop}), do: {:error, "Invalid loop value: #{inspect(loop)} (must be boolean)"}

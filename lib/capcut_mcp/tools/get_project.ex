@@ -3,6 +3,7 @@ defmodule CapcutMcp.Tools.GetProject do
   @behaviour CapcutMcp.Tool
 
   alias CapcutMcp.CapCut.ProjectStore
+  alias CapcutMcp.Tools.ToolArgs
 
   @impl true
   def definition do
@@ -38,9 +39,7 @@ defmodule CapcutMcp.Tools.GetProject do
         |> Enum.join("\n")
 
       {:ok, text}
-    else
-      {:error, :not_found} -> {:error, "Project not found: #{id}"}
-      {:error, reason} -> {:error, inspect(reason)}
     end
+    |> ToolArgs.format_tool_result(id)
   end
 end

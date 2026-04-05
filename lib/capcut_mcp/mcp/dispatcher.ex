@@ -38,6 +38,9 @@ defmodule CapcutMcp.MCP.Dispatcher do
     SetClipBlendMode
   ]
 
+  @tool_definitions Enum.map(@tools, & &1.definition())
+  @tool_by_name Map.new(@tools, fn mod -> {mod.definition()["name"], mod} end)
+
   def dispatch(%{"method" => "initialize", "id" => id}) do
     Protocol.encode_response(id, %{
       "protocolVersion" => "2024-11-05",
@@ -52,8 +55,7 @@ defmodule CapcutMcp.MCP.Dispatcher do
   end
 
   def dispatch(%{"method" => "tools/list", "id" => id}) do
-    tools = Enum.map(@tools, & &1.definition())
-    Protocol.encode_response(id, %{"tools" => tools})
+    Protocol.encode_response(id, %{"tools" => @tool_definitions})
   end
 
   def dispatch(%{
@@ -61,11 +63,11 @@ defmodule CapcutMcp.MCP.Dispatcher do
         "id" => id,
         "params" => %{"name" => name, "arguments" => args}
       }) do
-    case Enum.find(@tools, fn t -> t.definition()["name"] == name end) do
-      nil ->
+    case Map.fetch(@tool_by_name, name) do
+      :error ->
         Protocol.encode_error(id, -32601, "Tool not found: #{name}")
 
-      tool ->
+      {:ok, tool} ->
         case tool.execute(args) do
           {:ok, text} ->
             Protocol.encode_response(id, %{"content" => [%{"type" => "text", "text" => text}]})

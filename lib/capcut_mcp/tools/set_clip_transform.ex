@@ -51,11 +51,8 @@ defmodule CapcutMcp.Tools.SetClipTransform do
            TimelineHelper.update_segment(draft, clip_id, &apply_transform(&1, args)),
          :ok <- ProjectStore.update_project(id, updated_draft) do
       {:ok, "Transform updated on segment #{clip_id}."}
-    else
-      {:error, :not_found} -> {:error, "Project not found: #{id}"}
-      {:error, reason} when is_binary(reason) -> {:error, reason}
-      {:error, reason} -> {:error, inspect(reason)}
     end
+    |> ToolArgs.format_tool_result(id)
   end
 
   def execute(args),

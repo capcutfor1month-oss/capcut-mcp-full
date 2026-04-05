@@ -34,11 +34,8 @@ defmodule CapcutMcp.Tools.SetClipVolume do
            TimelineHelper.update_segment(draft, clip_id, &Map.put(&1, "volume", volume / 1)),
          :ok <- ProjectStore.update_project(id, updated_draft) do
       {:ok, "Volume set to #{volume} on segment #{clip_id}."}
-    else
-      {:error, :not_found} -> {:error, "Project not found: #{id}"}
-      {:error, reason} when is_binary(reason) -> {:error, reason}
-      {:error, reason} -> {:error, inspect(reason)}
     end
+    |> ToolArgs.format_tool_result(id)
   end
 
   def execute(args),

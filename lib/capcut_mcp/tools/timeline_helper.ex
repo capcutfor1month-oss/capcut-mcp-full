@@ -18,7 +18,7 @@ defmodule CapcutMcp.Tools.TimelineHelper do
 
   @doc "Inserts a segment into the appropriate track."
   def insert_segment(tracks, segment, type, nil) do
-    case Enum.find_index(tracks, fn t -> t["type"] == type end) do
+    case Enum.find_index(tracks, &(&1["type"] == type)) do
       nil ->
         new_track = %{
           "id" => generate_uuid(),
@@ -31,18 +31,22 @@ defmodule CapcutMcp.Tools.TimelineHelper do
         {tracks ++ [new_track], length(tracks)}
 
       idx ->
-        updated = Map.update!(Enum.at(tracks, idx), "segments", &(&1 ++ [segment]))
-        {List.replace_at(tracks, idx, updated), idx}
+        {append_segment_at(tracks, idx, segment), idx}
     end
   end
 
   def insert_segment(tracks, segment, _type, idx)
       when is_integer(idx) and idx >= 0 and idx < length(tracks) do
-    updated = Map.update!(Enum.at(tracks, idx), "segments", &(&1 ++ [segment]))
-    {List.replace_at(tracks, idx, updated), idx}
+    {append_segment_at(tracks, idx, segment), idx}
   end
 
   def insert_segment(tracks, segment, type, _idx), do: insert_segment(tracks, segment, type, nil)
+
+  defp append_segment_at(tracks, idx, segment) do
+    List.update_at(tracks, idx, fn track ->
+      Map.update!(track, "segments", &(&1 ++ [segment]))
+    end)
+  end
 
   @doc "Adds a material to the draft's materials map."
   def add_material(draft, category, material) do
@@ -68,10 +72,14 @@ defmodule CapcutMcp.Tools.TimelineHelper do
     tracks = draft["tracks"] || []
 
     result =
-      Enum.reduce_while(tracks |> Enum.with_index(), nil, fn {track, t_idx}, _acc ->
-        case Enum.find_index(track["segments"] || [], &(&1["id"] == segment_id)) do
-          nil -> {:cont, nil}
-          s_idx -> {:halt, {t_idx, s_idx, Enum.at(track["segments"], s_idx)}}
+      tracks
+      |> Enum.with_index()
+      |> Enum.find_value(fn {track, t_idx} ->
+        segments = track["segments"] || []
+
+        case Enum.find_index(segments, &(&1["id"] == segment_id)) do
+          nil -> nil
+          s_idx -> {t_idx, s_idx, Enum.at(segments, s_idx)}
         end
       end)
 

@@ -121,9 +121,6 @@ defmodule CapcutMcp.CapCut.BlendModes do
   end
 
   defp present_env?(name) do
-    case System.get_env(name) do
-      value when is_binary(value) -> String.trim(value) != ""
-      _ -> false
-    end
+    name |> System.get_env("") |> String.trim() != ""
   end
 end

@@ -3,7 +3,7 @@ defmodule CapcutMcp.Tools.AddClip do
   @behaviour CapcutMcp.Tool
 
   alias CapcutMcp.CapCut.ProjectStore
-  alias CapcutMcp.Tools.TimelineHelper
+  alias CapcutMcp.Tools.{TimelineHelper, ToolArgs}
 
   @video_exts ~w(.mp4 .mov .avi .mkv .webm .m4v .wmv)
   @audio_exts ~w(.mp3 .wav .aac .flac .ogg .m4a)
@@ -48,11 +48,8 @@ defmodule CapcutMcp.Tools.AddClip do
          :ok <- ProjectStore.update_project(id, updated_draft) do
       {:ok,
        "Clip added.\nSegment ID: #{segment_id}\nMaterial ID: #{material_id}\nType: #{track_type}\nTrack index: #{track_idx}\nTime: #{start_ms}ms → #{start_ms + duration_ms}ms"}
-    else
-      {:error, :not_found} -> {:error, "Project not found: #{id}"}
-      {:error, reason} when is_binary(reason) -> {:error, reason}
-      {:error, reason} -> {:error, inspect(reason)}
     end
+    |> ToolArgs.format_tool_result(id)
   end
 
   defp apply_clip_to_draft(draft, file_path, start_ms, duration_ms, track_index) do

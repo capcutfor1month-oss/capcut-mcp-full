@@ -1,4 +1,6 @@
 defmodule CapcutMcp.CapCut.ProjectStore do
+  @moduledoc "GenServer-backed cache for CapCut draft projects with read-through loading."
+
   use GenServer
   require Logger
   alias CapcutMcp.CapCut.{Reader, Writer, Types.ProjectMeta}
@@ -95,21 +97,13 @@ defmodule CapcutMcp.CapCut.ProjectStore do
   # ── Private helpers ──────────────────────────────────────────────────────────
 
   defp load_project(id, root_path) do
-    case Reader.list_projects(root_path) do
-      {:ok, projects} ->
-        case Enum.find(projects, fn p -> p.id == id end) do
-          nil ->
-            {:error, :not_found}
-
-          %ProjectMeta{path: path} ->
-            case Reader.read_draft(path) do
-              {:ok, draft} -> {:ok, {path, draft}}
-              error -> error
-            end
-        end
-
-      error ->
-        error
+    with {:ok, projects} <- Reader.list_projects(root_path),
+         %ProjectMeta{path: path} <- Enum.find(projects, &(&1.id == id)),
+         {:ok, draft} <- Reader.read_draft(path) do
+      {:ok, {path, draft}}
+    else
+      nil -> {:error, :not_found}
+      error -> error
     end
   end
 

@@ -38,11 +38,8 @@ defmodule CapcutMcp.Tools.SetClipOpacity do
            end),
          :ok <- ProjectStore.update_project(id, updated_draft) do
       {:ok, "Opacity set to #{opacity} on segment #{clip_id}."}
-    else
-      {:error, :not_found} -> {:error, "Project not found: #{id}"}
-      {:error, reason} when is_binary(reason) -> {:error, reason}
-      {:error, reason} -> {:error, inspect(reason)}
     end
+    |> ToolArgs.format_tool_result(id)
   end
 
   def execute(args),

@@ -46,11 +46,8 @@ defmodule CapcutMcp.Tools.SetClipBlendMode do
          {:ok, updated_draft} <- apply_blend_mode(draft, clip_id, seg, blend_mode, value),
          :ok <- ProjectStore.update_project(id, updated_draft) do
       {:ok, "Blend mode '#{blend_mode.label}' (#{blend_mode.name_id}) set on segment #{clip_id} with intensity #{value}."}
-    else
-      {:error, :not_found} -> {:error, "Project not found: #{id}"}
-      {:error, reason} when is_binary(reason) -> {:error, reason}
-      {:error, reason} -> {:error, inspect(reason)}
     end
+    |> ToolArgs.format_tool_result(id)
   end
 
   def execute(args),

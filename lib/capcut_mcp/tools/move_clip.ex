@@ -38,11 +38,8 @@ defmodule CapcutMcp.Tools.MoveClip do
            end),
          :ok <- ProjectStore.update_project(id, updated_draft) do
       {:ok, "Clip #{clip_id} moved to #{start_ms}ms."}
-    else
-      {:error, :not_found} -> {:error, "Project not found: #{id}"}
-      {:error, reason} when is_binary(reason) -> {:error, reason}
-      {:error, reason} -> {:error, inspect(reason)}
     end
+    |> ToolArgs.format_tool_result(id)
   end
 
   def execute(%{"start_ms" => start_ms}),

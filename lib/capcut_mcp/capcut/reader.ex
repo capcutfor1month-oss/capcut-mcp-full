@@ -13,15 +13,20 @@ defmodule CapcutMcp.CapCut.Reader do
       projects =
         data
         |> Map.get("all_draft_store", [])
-        |> Enum.filter(fn d -> d["draft_id"] && d["draft_name"] && d["draft_fold_path"] end)
-        |> Enum.map(fn draft ->
-          %ProjectMeta{
-            id: draft["draft_id"],
-            name: draft["draft_name"],
-            path: draft["draft_fold_path"],
-            modified_at: draft["tm_draft_modified"],
-            duration_ms: (draft["tm_duration"] || 0) |> trunc() |> div(1000)
-          }
+        |> Enum.flat_map(fn
+          %{"draft_id" => id, "draft_name" => name, "draft_fold_path" => path} = draft ->
+            [
+              %ProjectMeta{
+                id: id,
+                name: name,
+                path: path,
+                modified_at: draft["tm_draft_modified"],
+                duration_ms: parse_duration(draft["tm_duration"])
+              }
+            ]
+
+          _incomplete ->
+            []
         end)
 
       {:ok, projects}
@@ -36,4 +41,8 @@ defmodule CapcutMcp.CapCut.Reader do
     with {:ok, content} <- File.read(json_file),
          do: Jason.decode(content)
   end
+
+  defp parse_duration(nil), do: 0
+  defp parse_duration(duration) when is_number(duration), do: duration |> trunc() |> div(1000)
+  defp parse_duration(_), do: 0
 end
