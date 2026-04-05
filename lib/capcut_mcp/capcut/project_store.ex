@@ -58,11 +58,8 @@ defmodule CapcutMcp.CapCut.ProjectStore do
 
   @impl true
   def handle_call({:update_project, id, draft}, _from, state) do
-    case Map.get(state.cache, id) do
-      nil ->
-        {:reply, {:error, :not_found}, state}
-
-      {path, _old} ->
+    case resolve_path(id, state) do
+      {:ok, path, state} ->
         case Writer.write_draft(path, draft) do
           :ok ->
             {:reply, :ok, %{state | cache: Map.put(state.cache, id, {path, draft})}}
@@ -70,6 +67,9 @@ defmodule CapcutMcp.CapCut.ProjectStore do
           error ->
             {:reply, error, state}
         end
+
+      {:error, _} = error ->
+        {:reply, error, state}
     end
   end
 
@@ -96,6 +96,22 @@ defmodule CapcutMcp.CapCut.ProjectStore do
 
   # ── Private helpers ──────────────────────────────────────────────────────────
 
+  defp resolve_path(id, state) do
+    case Map.get(state.cache, id) do
+      {path, _draft} ->
+        {:ok, path, state}
+
+      nil ->
+        case load_project(id, state.root_path) do
+          {:ok, {path, draft}} ->
+            {:ok, path, %{state | cache: Map.put(state.cache, id, {path, draft})}}
+
+          error ->
+            error
+        end
+    end
+  end
+
   defp load_project(id, root_path) do
     with {:ok, projects} <- Reader.list_projects(root_path),
          %ProjectMeta{path: path} <- Enum.find(projects, &(&1.id == id)),
@@ -110,10 +126,14 @@ defmodule CapcutMcp.CapCut.ProjectStore do
   defp update_root_meta(root_path, id, name, project_path) do
     meta_file = Path.join(root_path, "root_meta_info.json")
 
+    default_meta = %{"all_draft_store" => [], "draft_ids" => 0, "root_path" => root_path}
+
     existing =
-      case File.read(meta_file) do
-        {:ok, content} -> Jason.decode!(content)
-        _ -> %{"all_draft_store" => [], "draft_ids" => 0, "root_path" => root_path}
+      with {:ok, content} <- File.read(meta_file),
+           {:ok, data} <- Jason.decode(content) do
+        data
+      else
+        _ -> default_meta
       end
 
     now = System.os_time(:microsecond)

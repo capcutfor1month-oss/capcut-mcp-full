@@ -61,8 +61,10 @@ defmodule CapcutMcp.MCP.Dispatcher do
   def dispatch(%{
         "method" => "tools/call",
         "id" => id,
-        "params" => %{"name" => name, "arguments" => args}
+        "params" => %{"name" => name} = params
       }) do
+    args = Map.get(params, "arguments", %{})
+
     case Map.fetch(@tool_by_name, name) do
       :error ->
         Protocol.encode_error(id, -32601, "Tool not found: #{name}")

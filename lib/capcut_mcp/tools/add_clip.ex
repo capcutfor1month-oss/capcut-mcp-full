@@ -2,6 +2,8 @@ defmodule CapcutMcp.Tools.AddClip do
   @moduledoc "MCP tool: add a video or audio clip to a CapCut project timeline."
   @behaviour CapcutMcp.Tool
 
+  require Logger
+
   alias CapcutMcp.CapCut.ProjectStore
   alias CapcutMcp.Tools.{TimelineHelper, ToolArgs}
 
@@ -116,22 +118,38 @@ defmodule CapcutMcp.Tools.AddClip do
   end
 
   defp validate_file_path(path) when is_binary(path) do
-    if String.trim(path) != "" and Path.type(path) == :absolute do
-      {:ok, path}
-    else
-      {:error, "Invalid file_path: #{inspect(path)}"}
+    cond do
+      String.trim(path) == "" ->
+        {:error, "Invalid file_path: path is empty"}
+
+      Path.type(path) != :absolute ->
+        {:error, "Invalid file_path: expected absolute path, got #{inspect(path)}"}
+
+      validate_file_exists?() and not File.exists?(path) ->
+        {:error, "File not found: #{path}"}
+
+      true ->
+        {:ok, path}
     end
   end
 
   defp validate_file_path(path), do: {:error, "Invalid file_path: #{inspect(path)}"}
 
+  defp validate_file_exists?, do: Application.get_env(:capcut_mcp, :validate_file_exists, true)
+
   defp detect_type(path) do
     ext = path |> Path.extname() |> String.downcase()
 
     cond do
-      ext in @video_exts -> "video"
-      ext in @audio_exts -> "audio"
-      true -> "video"
+      ext in @video_exts ->
+        "video"
+
+      ext in @audio_exts ->
+        "audio"
+
+      true ->
+        Logger.warning("Unknown file extension #{inspect(ext)} for #{path}, defaulting to video")
+        "video"
     end
   end
 end
