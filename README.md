@@ -255,5 +255,5 @@ iex -S mix run --no-halt
 - **:telemetry** -- structured events for every tool call
 - **Credo** (`--strict`) -- zero issues
 - **Dialyzer** (`:underspecs`, `:error_handling`, `:unknown`) -- zero warnings
-- **ExUnit** -- 82 tests (incl. JSON-RPC integration tests with telemetry assertions)
-- **ExCoveralls** -- ~73% line coverage on application code (uncovered paths are mostly stdin-loop I/O and lazy disk helpers)
+- **ExUnit** -- 109 tests (incl. JSON-RPC integration tests with telemetry assertions, plus 2 doctests)
+- **ExCoveralls** -- ~83% line coverage on application code (remaining gaps are the stdin-loop I/O layer and a few lazy disk helpers)

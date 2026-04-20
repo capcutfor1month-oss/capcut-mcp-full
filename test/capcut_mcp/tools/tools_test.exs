@@ -116,6 +116,36 @@ defmodule CapcutMcp.ToolsTest do
   end
 
   @tag :tmp_dir
+  test "CreateProject.execute uses defaults when name is the only arg" do
+    assert {:ok, id} = CreateProject.execute(%{"name" => "Defaults"})
+    assert {:ok, draft} = ProjectStore.get_project(id)
+    assert draft["canvas_config"]["width"] == 1920
+    assert draft["canvas_config"]["height"] == 1080
+    assert draft["fps"] == 30.0
+  end
+
+  @tag :tmp_dir
+  test "CreateProject.execute substitutes 'Untitled_N' when name has no safe characters",
+       %{project_id: _id} do
+    assert {:ok, id} = CreateProject.execute(%{"name" => "!!!"})
+    assert is_binary(id)
+    assert {:ok, draft} = ProjectStore.get_project(id)
+    assert draft["name"] == "!!!"
+  end
+
+  @tag :tmp_dir
+  test "CreateProject.execute returns formatted error when directory cannot be created",
+       %{tmp_dir: tmp} do
+    # Place a plain file where the sanitized project directory would go —
+    # mkdir_p then fails with :enotdir / :eexist and the tool surfaces it.
+    conflict = Path.join(tmp, "Conflict_Project")
+    File.write!(conflict, "blocking")
+
+    assert {:error, msg} = CreateProject.execute(%{"name" => "Conflict Project"})
+    assert msg =~ "Failed to create project"
+  end
+
+  @tag :tmp_dir
   test "CreateProject.execute respects width/height/fps params" do
     assert {:ok, id} =
              CreateProject.execute(%{
