@@ -3,8 +3,16 @@ defmodule CapcutMcp.CapCut.BlendModesTest do
 
   alias CapcutMcp.CapCut.BlendModes
 
+  setup do
+    BlendModes.invalidate_cache()
+    on_exit(fn -> BlendModes.invalidate_cache() end)
+    :ok
+  end
+
   @tag :tmp_dir
-  test "list_modes uses LOCALAPPDATA fallback and picks newest semver version", %{tmp_dir: tmp_dir} do
+  test "list_modes uses LOCALAPPDATA fallback and picks newest semver version", %{
+    tmp_dir: tmp_dir
+  } do
     previous_localappdata = System.get_env("LOCALAPPDATA")
     previous_apps_path = System.get_env("CAPCUT_APPS_PATH")
 

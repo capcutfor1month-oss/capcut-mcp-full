@@ -22,12 +22,9 @@ defmodule CapcutMcp.Tools.ListProjects do
 
       {:ok, projects} ->
         text =
-          projects
-          |> Enum.map(fn p ->
-            modified = format_ts(p.modified_at)
-            "• #{p.name}\n  ID: #{p.id}\n  Duration: #{p.duration_ms}ms\n  Modified: #{modified}"
+          Enum.map_join(projects, "\n\n", fn p ->
+            "• #{p.name}\n  ID: #{p.id}\n  Duration: #{p.duration_ms}ms\n  Modified: #{format_ts(p.modified_at)}"
           end)
-          |> Enum.join("\n\n")
 
         {:ok, text}
 

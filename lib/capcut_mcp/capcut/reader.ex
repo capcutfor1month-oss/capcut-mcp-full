@@ -1,7 +1,7 @@
 defmodule CapcutMcp.CapCut.Reader do
   @moduledoc "Reads CapCut project metadata and draft content from the local filesystem."
 
-  alias CapcutMcp.CapCut.Types.ProjectMeta
+  alias CapcutMcp.CapCut.ProjectMeta
 
   @doc "Reads all project metadata from root_meta_info.json"
   @spec list_projects(String.t()) :: {:ok, [ProjectMeta.t()]} | {:error, term()}

@@ -2,8 +2,7 @@ defmodule CapcutMcp.Tools.TrimClip do
   @moduledoc "MCP tool: set source in/out points and optionally adjust timeline duration."
   @behaviour CapcutMcp.Tool
 
-  alias CapcutMcp.CapCut.ProjectStore
-  alias CapcutMcp.Tools.{TimelineHelper, ToolArgs}
+  alias CapcutMcp.Tools.{SegmentMutation, TimelineHelper, ToolArgs}
 
   @impl true
   def definition do
@@ -15,7 +14,10 @@ defmodule CapcutMcp.Tools.TrimClip do
         "type" => "object",
         "properties" => %{
           "project_id" => %{"type" => "string", "description" => "The draft_id of the project"},
-          "clip_id" => %{"type" => "string", "description" => "The segment ID (from get_timeline)"},
+          "clip_id" => %{
+            "type" => "string",
+            "description" => "The segment ID (from get_timeline)"
+          },
           "source_start_ms" => %{
             "type" => "integer",
             "description" => "In-point in the source material in ms (default: keep current)"
@@ -43,16 +45,11 @@ defmodule CapcutMcp.Tools.TrimClip do
 
     with :ok <- validate_optional_timing(source_start, "source_start_ms"),
          :ok <- validate_optional_positive(source_dur, "source_duration_ms"),
-         :ok <- validate_optional_positive(target_dur, "target_duration_ms"),
-         {:ok, draft} <- ProjectStore.get_project(id),
-         {:ok, updated_draft} <-
-           TimelineHelper.update_segment(draft, clip_id, fn seg ->
-             apply_trim(seg, source_start, source_dur, target_dur)
-           end),
-         :ok <- ProjectStore.update_project(id, updated_draft) do
-      {:ok, "Clip #{clip_id} trimmed."}
+         :ok <- validate_optional_positive(target_dur, "target_duration_ms") do
+      SegmentMutation.run(id, clip_id, &apply_trim(&1, source_start, source_dur, target_dur),
+        success: "Clip #{clip_id} trimmed."
+      )
     end
-    |> ToolArgs.format_tool_result(id)
   end
 
   def execute(args),
@@ -97,9 +94,13 @@ defmodule CapcutMcp.Tools.TrimClip do
 
   defp validate_optional_timing(nil, _), do: :ok
   defp validate_optional_timing(v, _) when is_integer(v) and v >= 0, do: :ok
-  defp validate_optional_timing(v, name), do: {:error, "Invalid #{name}: #{inspect(v)} (must be integer >= 0)"}
+
+  defp validate_optional_timing(v, name),
+    do: {:error, "Invalid #{name}: #{inspect(v)} (must be integer >= 0)"}
 
   defp validate_optional_positive(nil, _), do: :ok
   defp validate_optional_positive(v, _) when is_integer(v) and v > 0, do: :ok
-  defp validate_optional_positive(v, name), do: {:error, "Invalid #{name}: #{inspect(v)} (must be integer > 0)"}
+
+  defp validate_optional_positive(v, name),
+    do: {:error, "Invalid #{name}: #{inspect(v)} (must be integer > 0)"}
 end

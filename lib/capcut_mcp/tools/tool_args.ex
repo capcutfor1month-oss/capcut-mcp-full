@@ -28,7 +28,28 @@ defmodule CapcutMcp.Tools.ToolArgs do
   """
   @spec format_tool_result(term(), String.t()) :: {:ok, String.t()} | {:error, String.t()}
   def format_tool_result({:ok, _} = ok, _project_id), do: ok
-  def format_tool_result({:error, :not_found}, project_id), do: {:error, "Project not found: #{project_id}"}
-  def format_tool_result({:error, reason}, _project_id) when is_binary(reason), do: {:error, reason}
+
+  def format_tool_result({:error, :not_found}, project_id),
+    do: {:error, "Project not found: #{project_id}"}
+
+  def format_tool_result({:error, reason}, _project_id) when is_binary(reason),
+    do: {:error, reason}
+
   def format_tool_result({:error, reason}, _project_id), do: {:error, inspect(reason)}
+
+  @doc """
+  Coerces a number to `float`. CapCut's JSON schema expects floats for things like
+  `alpha`, `scale`, and `rotation`; integer inputs from the wire need widening.
+
+  ## Examples
+
+      iex> CapcutMcp.Tools.ToolArgs.to_float(1)
+      1.0
+
+      iex> CapcutMcp.Tools.ToolArgs.to_float(0.5)
+      0.5
+  """
+  @spec to_float(number()) :: float()
+  def to_float(v) when is_integer(v), do: v * 1.0
+  def to_float(v) when is_float(v), do: v
 end

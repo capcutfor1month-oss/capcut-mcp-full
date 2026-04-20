@@ -115,20 +115,16 @@ defmodule CapcutMcp.Tools.TimelineHelper do
     Map.put(segment, key, timerange)
   end
 
-  @doc "Validates start_ms and duration_ms."
+  @doc "Validates that `start_ms` is a non-negative integer and `duration_ms` a positive integer."
+  @spec validate_timing(term(), term()) ::
+          {:ok, {non_neg_integer(), pos_integer()}} | {:error, String.t()}
   def validate_timing(start_ms, duration_ms)
       when is_integer(start_ms) and start_ms >= 0 and is_integer(duration_ms) and duration_ms > 0 do
     {:ok, {start_ms, duration_ms}}
   end
 
-  def validate_timing(start_ms, _duration_ms) when not is_integer(start_ms),
+  def validate_timing(start_ms, _duration_ms) when not (is_integer(start_ms) and start_ms >= 0),
     do: {:error, "Invalid start_ms: #{inspect(start_ms)}"}
-
-  def validate_timing(start_ms, _duration_ms) when is_integer(start_ms) and start_ms < 0,
-    do: {:error, "Invalid start_ms: #{inspect(start_ms)}"}
-
-  def validate_timing(_start_ms, duration_ms) when not is_integer(duration_ms),
-    do: {:error, "Invalid duration_ms: #{inspect(duration_ms)}"}
 
   def validate_timing(_start_ms, duration_ms),
     do: {:error, "Invalid duration_ms: #{inspect(duration_ms)}"}

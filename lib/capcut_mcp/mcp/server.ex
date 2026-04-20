@@ -1,8 +1,13 @@
 defmodule CapcutMcp.MCP.Server do
-  @moduledoc "GenServer that reads JSON-RPC messages from stdin and dispatches them."
+  @moduledoc """
+  GenServer that handles JSON-RPC messages forwarded from `CapcutMcp.MCP.StdinReader`.
+
+  Decoding, dispatching, and stdout replies live here; stdin reading lives in a
+  separate supervised `Task` so each concern has its own failure domain.
+  """
   use GenServer
   require Logger
-  alias CapcutMcp.MCP.{Protocol, Dispatcher}
+  alias CapcutMcp.MCP.{Dispatcher, Protocol}
 
   def start_link(opts \\ []) do
     GenServer.start_link(__MODULE__, opts, name: __MODULE__)
@@ -10,8 +15,6 @@ defmodule CapcutMcp.MCP.Server do
 
   @impl true
   def init(_opts) do
-    server_pid = self()
-    spawn_link(fn -> stdin_loop(server_pid) end)
     Logger.info("CapCut MCP Server started — waiting for messages on stdin")
     {:ok, %{}}
   end
@@ -20,13 +23,10 @@ defmodule CapcutMcp.MCP.Server do
   def handle_info({:line, line}, state) do
     with {:ok, msg} <- Protocol.decode_message(line),
          response when not is_nil(response) <- Dispatcher.dispatch(msg) do
-      IO.puts(response)
+      IO.puts(:stdio, response)
     else
-      {:error, _} ->
-        IO.puts(Protocol.encode_error(nil, -32700, "Parse error"))
-
-      nil ->
-        :ok
+      {:error, _} -> IO.puts(:stdio, Protocol.encode_error(nil, -32700, "Parse error"))
+      nil -> :ok
     end
 
     {:noreply, state}
@@ -40,20 +40,5 @@ defmodule CapcutMcp.MCP.Server do
   def handle_info({:stdin_error, reason}, state) do
     Logger.error("stdin error: #{inspect(reason)}")
     {:stop, reason, state}
-  end
-
-  defp stdin_loop(server_pid) do
-    case IO.read(:stdio, :line) do
-      :eof ->
-        send(server_pid, :eof)
-
-      {:error, reason} ->
-        send(server_pid, {:stdin_error, reason})
-
-      line ->
-        trimmed = String.trim(line)
-        unless trimmed == "", do: send(server_pid, {:line, trimmed})
-        stdin_loop(server_pid)
-    end
   end
 end

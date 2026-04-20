@@ -1,9 +1,19 @@
 defmodule CapcutMcp.CapCut.ProjectStore do
-  @moduledoc "GenServer-backed cache for CapCut draft projects with read-through loading."
+  @moduledoc """
+  Cache + mutation gateway for CapCut draft projects.
+
+  Reads go **directly through ETS** (`:read_concurrency`, no process bottleneck).
+  Writes are serialized through the owning `GenServer` so atomic-write semantics
+  and cache consistency stay intact. The ETS table is `:protected` and owned by
+  this process, so only the server can mutate it; the outside world can only
+  read.
+  """
 
   use GenServer
   require Logger
-  alias CapcutMcp.CapCut.{Reader, Writer, Types.ProjectMeta}
+  alias CapcutMcp.CapCut.{Draft, ProjectMeta, Reader, Writer}
+
+  @table :capcut_project_cache
 
   # ── Client API ──────────────────────────────────────────────────────────────
 
@@ -15,7 +25,12 @@ defmodule CapcutMcp.CapCut.ProjectStore do
   def list_projects, do: GenServer.call(__MODULE__, :list_projects)
 
   @spec get_project(String.t()) :: {:ok, map()} | {:error, :not_found | term()}
-  def get_project(id), do: GenServer.call(__MODULE__, {:get_project, id})
+  def get_project(id) do
+    case cache_lookup(id) do
+      {:ok, _path, draft} -> {:ok, draft}
+      :miss -> GenServer.call(__MODULE__, {:load_project, id})
+    end
+  end
 
   @spec update_project(String.t(), map()) :: :ok | {:error, term()}
   def update_project(id, draft), do: GenServer.call(__MODULE__, {:update_project, id, draft})
@@ -27,11 +42,13 @@ defmodule CapcutMcp.CapCut.ProjectStore do
 
   @impl true
   def init(opts) do
+    :ets.new(@table, [:set, :protected, :named_table, read_concurrency: true])
+
     root_path =
       Keyword.get(opts, :root_path) ||
         Application.get_env(:capcut_mcp, :capcut_path)
 
-    {:ok, %{root_path: root_path, cache: %{}}}
+    {:ok, %{root_path: root_path}}
   end
 
   @impl true
@@ -40,36 +57,31 @@ defmodule CapcutMcp.CapCut.ProjectStore do
   end
 
   @impl true
-  def handle_call({:get_project, id}, _from, state) do
-    case Map.get(state.cache, id) do
-      nil ->
+  def handle_call({:load_project, id}, _from, state) do
+    case cache_lookup(id) do
+      {:ok, _path, draft} ->
+        {:reply, {:ok, draft}, state}
+
+      :miss ->
         case load_project(id, state.root_path) do
           {:ok, {path, draft}} ->
-            {:reply, {:ok, draft}, %{state | cache: Map.put(state.cache, id, {path, draft})}}
+            cache_put(id, path, draft)
+            {:reply, {:ok, draft}, state}
 
           error ->
             {:reply, error, state}
         end
-
-      {_path, draft} ->
-        {:reply, {:ok, draft}, state}
     end
   end
 
   @impl true
   def handle_call({:update_project, id, draft}, _from, state) do
-    case resolve_path(id, state) do
-      {:ok, path, state} ->
-        case Writer.write_draft(path, draft) do
-          :ok ->
-            {:reply, :ok, %{state | cache: Map.put(state.cache, id, {path, draft})}}
-
-          error ->
-            {:reply, error, state}
-        end
-
-      {:error, _} = error ->
-        {:reply, error, state}
+    with {:ok, path} <- ensure_path(id, state.root_path),
+         :ok <- Writer.write_draft(path, draft) do
+      cache_put(id, path, draft)
+      {:reply, :ok, state}
+    else
+      {:error, _} = error -> {:reply, error, state}
     end
   end
 
@@ -77,18 +89,24 @@ defmodule CapcutMcp.CapCut.ProjectStore do
   def handle_call({:create_project, params}, _from, state) do
     id = generate_uuid()
     name = Map.get(params, "name", "New Project")
-    width = Map.get(params, "width", 1920)
-    height = Map.get(params, "height", 1080)
-    fps = Map.get(params, "fps", 30.0) * 1.0
 
-    dir_name = name |> String.replace(~r/[^\w\s\-]/, "") |> String.replace(" ", "_")
-    project_path = Path.join(state.root_path, dir_name)
+    draft =
+      Draft.new(
+        id: id,
+        name: name,
+        width: Map.get(params, "width", 1920),
+        height: Map.get(params, "height", 1080),
+        fps: Map.get(params, "fps", 30.0)
+      )
+
+    draft_map = Draft.to_json(draft)
+    project_path = Path.join(state.root_path, sanitize_dir_name(name))
 
     with :ok <- File.mkdir_p(project_path),
-         draft <- new_draft(id, name, width, height, fps),
-         :ok <- Writer.write_draft(project_path, draft),
+         :ok <- Writer.write_draft(project_path, draft_map),
          :ok <- update_root_meta(state.root_path, id, name, project_path) do
-      {:reply, {:ok, id}, %{state | cache: Map.put(state.cache, id, {project_path, draft})}}
+      cache_put(id, project_path, draft_map)
+      {:reply, {:ok, id}, state}
     else
       error -> {:reply, error, state}
     end
@@ -96,18 +114,26 @@ defmodule CapcutMcp.CapCut.ProjectStore do
 
   # ── Private helpers ──────────────────────────────────────────────────────────
 
-  defp resolve_path(id, state) do
-    case Map.get(state.cache, id) do
-      {path, _draft} ->
-        {:ok, path, state}
+  defp cache_lookup(id) do
+    case :ets.lookup(@table, id) do
+      [{^id, path, draft}] -> {:ok, path, draft}
+      [] -> :miss
+    end
+  rescue
+    ArgumentError -> :miss
+  end
 
-      nil ->
-        case load_project(id, state.root_path) do
-          {:ok, {path, draft}} ->
-            {:ok, path, %{state | cache: Map.put(state.cache, id, {path, draft})}}
+  defp cache_put(id, path, draft), do: :ets.insert(@table, {id, path, draft})
 
-          error ->
-            error
+  defp ensure_path(id, root_path) do
+    case cache_lookup(id) do
+      {:ok, path, _draft} ->
+        {:ok, path}
+
+      :miss ->
+        with {:ok, {path, draft}} <- load_project(id, root_path) do
+          cache_put(id, path, draft)
+          {:ok, path}
         end
     end
   end
@@ -125,7 +151,6 @@ defmodule CapcutMcp.CapCut.ProjectStore do
 
   defp update_root_meta(root_path, id, name, project_path) do
     meta_file = Path.join(root_path, "root_meta_info.json")
-
     default_meta = %{"all_draft_store" => [], "draft_ids" => 0, "root_path" => root_path}
 
     existing =
@@ -161,44 +186,13 @@ defmodule CapcutMcp.CapCut.ProjectStore do
     Writer.write_root_meta(root_path, updated)
   end
 
-  defp new_draft(id, name, width, height, fps) do
-    %{
-      "id" => id,
-      "name" => name,
-      "draft_type" => "video",
-      "canvas_config" => %{
-        "width" => width,
-        "height" => height,
-        "ratio" => "original",
-        "background" => nil
-      },
-      "fps" => fps,
-      "duration" => 0,
-      "tracks" => [],
-      "materials" => %{
-        "videos" => [],
-        "audios" => [],
-        "texts" => [],
-        "images" => [],
-        "effects" => [],
-        "transitions" => [],
-        "stickers" => [],
-        "filters" => []
-      },
-      "keyframes" => %{
-        "adjusts" => [],
-        "audios" => [],
-        "effects" => [],
-        "filters" => [],
-        "stickers" => [],
-        "texts" => [],
-        "videos" => []
-      },
-      "version" => 360_000,
-      "new_version" => "163.0.0",
-      "create_time" => 0,
-      "update_time" => 0
-    }
+  defp sanitize_dir_name(name) do
+    safe =
+      name
+      |> String.replace(~r/[^\w\s\-]/u, "")
+      |> String.replace(" ", "_")
+
+    if safe == "", do: "Untitled_#{System.unique_integer([:positive])}", else: safe
   end
 
   defp generate_uuid, do: CapcutMcp.Tools.TimelineHelper.generate_uuid()

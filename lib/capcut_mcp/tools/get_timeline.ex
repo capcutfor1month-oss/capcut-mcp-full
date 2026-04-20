@@ -32,8 +32,7 @@ defmodule CapcutMcp.Tools.GetTimeline do
         text =
           tracks
           |> Enum.with_index(1)
-          |> Enum.map(&format_track/1)
-          |> Enum.join("\n\n")
+          |> Enum.map_join("\n\n", &format_track/1)
 
         {:ok, text}
       end
@@ -43,11 +42,7 @@ defmodule CapcutMcp.Tools.GetTimeline do
 
   defp format_track({track, index}) do
     segments = track["segments"] || []
-
-    formatted_segments =
-      segments
-      |> Enum.map(&format_segment/1)
-      |> Enum.join("\n")
+    formatted_segments = Enum.map_join(segments, "\n", &format_segment/1)
 
     "Track #{index} [#{track["type"]}] id=#{track["id"]} — #{length(segments)} segment(s):\n#{formatted_segments}"
   end

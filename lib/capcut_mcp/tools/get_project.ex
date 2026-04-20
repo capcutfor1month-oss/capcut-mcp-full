@@ -27,16 +27,18 @@ defmodule CapcutMcp.Tools.GetProject do
       canvas = draft["canvas_config"] || %{}
 
       text =
-        [
-          "Name: #{draft["name"] || "(unnamed)"}",
-          "ID: #{draft["id"]}",
-          "Canvas: #{canvas["width"]}x#{canvas["height"]} (#{canvas["ratio"]})",
-          "FPS: #{draft["fps"]}",
-          "Duration: #{draft["duration"]}us",
-          "Version: #{draft["new_version"]}",
-          "Tracks: #{length(draft["tracks"] || [])}"
-        ]
-        |> Enum.join("\n")
+        Enum.join(
+          [
+            "Name: #{draft["name"] || "(unnamed)"}",
+            "ID: #{draft["id"]}",
+            "Canvas: #{canvas["width"]}x#{canvas["height"]} (#{canvas["ratio"]})",
+            "FPS: #{draft["fps"]}",
+            "Duration: #{draft["duration"]}us",
+            "Version: #{draft["new_version"]}",
+            "Tracks: #{length(draft["tracks"] || [])}"
+          ],
+          "\n"
+        )
 
       {:ok, text}
     end

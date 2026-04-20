@@ -1,7 +1,11 @@
 defmodule CapcutMcp.CapCut.BlendModes do
   @moduledoc """
   Discovers available MixMode (blend mode) resources from the local CapCut installation.
-  Reads MixMode.json once from disk and caches the result in an ETS table for subsequent lookups.
+
+  Reads `MixMode.json` once from disk and caches the result in an ETS table for
+  subsequent lookups. The table is owned by the application master (created in
+  `CapcutMcp.Application.start/2` via `init_table/0`) so it outlives any
+  individual caller process.
   """
 
   @ets_table :capcut_blend_modes
@@ -18,6 +22,19 @@ defmodule CapcutMcp.CapCut.BlendModes do
     "darken_color" => "Color Burn",
     "color_dodge" => "Color Dodge"
   }
+
+  @doc """
+  Initializes the ETS cache table. Idempotent; called once from `Application.start/2`
+  so the table is owned by the long-lived application master process.
+  """
+  @spec init_table() :: :ok
+  def init_table do
+    if :ets.whereis(@ets_table) == :undefined do
+      :ets.new(@ets_table, [:set, :public, :named_table, read_concurrency: true])
+    end
+
+    :ok
+  end
 
   @doc "Returns all available blend modes, reading from disk only on first call."
   @spec list_modes() :: {:ok, [map()]} | {:error, String.t()}
@@ -54,23 +71,22 @@ defmodule CapcutMcp.CapCut.BlendModes do
   @doc "Clears the cached blend modes, forcing a disk reload on next access."
   @spec invalidate_cache() :: :ok
   def invalidate_cache do
-    if ets_exists?(), do: :ets.delete_all_objects(@ets_table)
+    init_table()
+    :ets.delete(@ets_table, :modes)
     :ok
   end
 
   defp cached_modes do
-    if ets_exists?() do
-      case :ets.lookup(@ets_table, :modes) do
-        [{:modes, modes}] -> {:ok, modes}
-        [] -> :miss
-      end
-    else
-      :miss
+    init_table()
+
+    case :ets.lookup(@ets_table, :modes) do
+      [{:modes, modes}] -> {:ok, modes}
+      [] -> :miss
     end
   end
 
   defp load_and_cache do
-    ensure_ets()
+    init_table()
 
     with {:ok, mix_mode_dir} <- find_mix_mode_dir(),
          {:ok, modes} <- read_mix_mode_json(mix_mode_dir) do
@@ -78,14 +94,6 @@ defmodule CapcutMcp.CapCut.BlendModes do
       {:ok, modes}
     end
   end
-
-  defp ensure_ets do
-    :ets.new(@ets_table, [:set, :public, :named_table, read_concurrency: true])
-  rescue
-    ArgumentError -> :ok
-  end
-
-  defp ets_exists?, do: :ets.whereis(@ets_table) != :undefined
 
   defp find_mix_mode_dir do
     with {:ok, apps_path} <- apps_path() do
