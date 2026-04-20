@@ -1,7 +1,7 @@
 defmodule CapcutMcp.CapCut.ReaderTest do
   use ExUnit.Case, async: true
-  alias CapcutMcp.CapCut.Reader
   alias CapcutMcp.CapCut.ProjectMeta
+  alias CapcutMcp.CapCut.Reader
 
   @tag :tmp_dir
   test "list_projects returns empty list when no drafts", %{tmp_dir: tmp} do

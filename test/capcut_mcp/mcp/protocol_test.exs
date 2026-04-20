@@ -24,15 +24,15 @@ defmodule CapcutMcp.MCP.ProtocolTest do
   end
 
   test "encode_error wraps error in JSON-RPC envelope" do
-    json = Protocol.encode_error(1, -32601, "Method not found")
+    json = Protocol.encode_error(1, -32_601, "Method not found")
     assert {:ok, decoded} = Jason.decode(json)
-    assert decoded["error"]["code"] == -32601
+    assert decoded["error"]["code"] == -32_601
     assert decoded["error"]["message"] == "Method not found"
     assert decoded["id"] == 1
   end
 
   test "encode_response with nil id" do
-    json = Protocol.encode_error(nil, -32700, "Parse error")
+    json = Protocol.encode_error(nil, -32_700, "Parse error")
     assert {:ok, decoded} = Jason.decode(json)
     assert decoded["id"] == nil
   end

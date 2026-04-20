@@ -2,7 +2,7 @@ defmodule CapcutMcp.ToolsTest do
   use ExUnit.Case
 
   alias CapcutMcp.CapCut.ProjectStore
-  alias CapcutMcp.Tools.{ListProjects, GetProject, GetTimeline}
+  alias CapcutMcp.Tools.{GetProject, GetTimeline, ListProjects}
 
   setup %{tmp_dir: tmp} do
     project_id = "TOOL-TEST-001"
@@ -106,7 +106,7 @@ defmodule CapcutMcp.ToolsTest do
     assert {:error, _} = GetTimeline.execute(%{"project_id" => "NONEXISTENT"})
   end
 
-  alias CapcutMcp.Tools.{CreateProject, AddText}
+  alias CapcutMcp.Tools.{AddText, CreateProject}
 
   @tag :tmp_dir
   test "CreateProject.execute creates a project and returns an ID" do
@@ -144,9 +144,9 @@ defmodule CapcutMcp.ToolsTest do
     assert msg =~ "Text added"
     {:ok, draft} = ProjectStore.get_project(id)
     text_tracks = Enum.filter(draft["tracks"], fn t -> t["type"] == "text" end)
-    assert length(text_tracks) > 0
+    assert text_tracks != []
     segments = hd(text_tracks)["segments"]
-    assert length(segments) > 0
+    assert segments != []
   end
 
   @tag :tmp_dir
@@ -233,15 +233,15 @@ defmodule CapcutMcp.ToolsTest do
 
   alias CapcutMcp.Tools.{
     AddClip,
-    RemoveClip,
-    ReadDraftJson,
-    SetClipVolume,
-    SetClipLoop,
     MoveClip,
-    SetClipTransform,
+    ReadDraftJson,
+    RemoveClip,
+    SetClipBlendMode,
+    SetClipLoop,
     SetClipOpacity,
-    TrimClip,
-    SetClipBlendMode
+    SetClipTransform,
+    SetClipVolume,
+    TrimClip
   }
 
   # ── ReadDraftJson ───────────────────────────────────────────────────────────
@@ -592,7 +592,7 @@ defmodule CapcutMcp.ToolsTest do
     assert msg =~ "Clip added"
     {:ok, draft} = ProjectStore.get_project(id)
     video_tracks = Enum.filter(draft["tracks"], fn t -> t["type"] == "video" end)
-    assert length(video_tracks) > 0
+    assert video_tracks != []
   end
 
   @tag :tmp_dir
@@ -608,7 +608,7 @@ defmodule CapcutMcp.ToolsTest do
     assert msg =~ "Clip added"
     {:ok, draft} = ProjectStore.get_project(id)
     audio_tracks = Enum.filter(draft["tracks"], fn t -> t["type"] == "audio" end)
-    assert length(audio_tracks) > 0
+    assert audio_tracks != []
   end
 
   @tag :tmp_dir

@@ -45,7 +45,10 @@ defmodule CapcutMcp.CapCut.BlendModes do
     end
   end
 
-  @doc "Finds a blend mode by nameId (e.g. \"soft_light\") or display label (e.g. \"Screen\"). Case-insensitive."
+  @doc ~S"""
+  Finds a blend mode by nameId (e.g. `"soft_light"`) or display label
+  (e.g. `"Screen"`). Case-insensitive.
+  """
   @spec find_mode(String.t()) :: {:ok, map()} | {:error, String.t()}
   def find_mode(query) do
     with {:ok, modes} <- list_modes() do
@@ -96,24 +99,37 @@ defmodule CapcutMcp.CapCut.BlendModes do
   end
 
   defp find_mix_mode_dir do
-    with {:ok, apps_path} <- apps_path() do
-      case File.ls(apps_path) do
-        {:ok, entries} ->
-          case latest_version_dir(entries) do
-            nil ->
-              {:error, "No CapCut version found in #{apps_path}"}
+    with {:ok, apps_path} <- apps_path(),
+         {:ok, entries} <- list_apps_entries(apps_path),
+         {:ok, version_dir} <- pick_latest_version(apps_path, entries) do
+      verify_mix_mode_dir(apps_path, version_dir)
+    end
+  end
 
-            dir ->
-              mix_mode_dir = Path.join([apps_path, dir, "Resources", "MixMode"])
+  defp list_apps_entries(apps_path) do
+    case File.ls(apps_path) do
+      {:ok, entries} ->
+        {:ok, entries}
 
-              if File.dir?(mix_mode_dir),
-                do: {:ok, mix_mode_dir},
-                else: {:error, "MixMode directory not found: #{mix_mode_dir}"}
-          end
+      {:error, reason} ->
+        {:error, "Cannot read CapCut apps directory #{apps_path}: #{inspect(reason)}"}
+    end
+  end
 
-        {:error, reason} ->
-          {:error, "Cannot read CapCut apps directory #{apps_path}: #{inspect(reason)}"}
-      end
+  defp pick_latest_version(apps_path, entries) do
+    case latest_version_dir(entries) do
+      nil -> {:error, "No CapCut version found in #{apps_path}"}
+      dir -> {:ok, dir}
+    end
+  end
+
+  defp verify_mix_mode_dir(apps_path, version_dir) do
+    mix_mode_dir = Path.join([apps_path, version_dir, "Resources", "MixMode"])
+
+    if File.dir?(mix_mode_dir) do
+      {:ok, mix_mode_dir}
+    else
+      {:error, "MixMode directory not found: #{mix_mode_dir}"}
     end
   end
 
