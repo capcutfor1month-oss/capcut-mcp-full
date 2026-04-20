@@ -193,11 +193,39 @@ If either process crashes, the supervisor restarts it automatically. The `Projec
 
 Every write to `draft_content.json` creates a `.bak` backup and uses an atomic rename (write `.tmp` -> rename) to prevent corruption if the process is killed mid-write.
 
+## Observability
+
+Every `tools/call` goes through `:telemetry.span/3` in `CapcutMcp.MCP.Dispatcher`, so duration and outcome are exposed as structured events — no custom logging plumbing in individual tools.
+
+Emitted events:
+
+| Event                                              | Measurements                        | Metadata                               |
+|----------------------------------------------------|-------------------------------------|----------------------------------------|
+| `[:capcut_mcp, :tool, :execute, :start]`           | `:system_time`, `:monotonic_time`   | `:tool`, `:request_id`                 |
+| `[:capcut_mcp, :tool, :execute, :stop]`            | `:duration`, `:monotonic_time`      | `:tool`, `:request_id`, `:result`, `:reason?` |
+| `[:capcut_mcp, :tool, :execute, :exception]`       | `:duration`, `:monotonic_time`      | `:tool`, `:request_id`, `:kind`, `:reason`, `:stacktrace` |
+
+A default log handler in `CapcutMcp.Telemetry` is attached on boot and prints one line per call, e.g.:
+
+```text
+12:34:56.789 [info] tool=add_text request_id=42 result=ok duration=8.24ms
+```
+
+`Logger.metadata` is populated early in the pipeline (`mcp_request_id`, `mcp_method`, `tool`, `request_id`), so every log line further down the stack — including inside individual tools — is filterable by request.
+
+To pipe events into Prometheus, OpenTelemetry, Datadog, etc., attach your own handler; the tool code does not need to change.
+
 ## Development
 
 ```bash
 # Run tests
 mix test
+
+# Code style (strict)
+mix credo --strict
+
+# Format check
+mix format --check-formatted
 
 # Run with a custom CapCut path
 CAPCUT_PATH="C:/path/to/projects" mix run --no-halt
@@ -217,4 +245,6 @@ iex -S mix run --no-halt
 
 - **Elixir 1.19 / OTP 28** -- because why not
 - **Jason** -- JSON encode/decode
+- **:telemetry** -- structured events for every tool call
+- **Credo** (`--strict`) -- zero issues
 - **ExUnit** -- 73 tests
