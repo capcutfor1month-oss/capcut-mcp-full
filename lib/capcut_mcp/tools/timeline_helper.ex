@@ -17,6 +17,8 @@ defmodule CapcutMcp.Tools.TimelineHelper do
   end
 
   @doc "Inserts a segment into the appropriate track."
+  @spec insert_segment([map()], map(), String.t(), non_neg_integer() | nil) ::
+          {[map()], non_neg_integer()}
   def insert_segment(tracks, segment, type, nil) do
     case Enum.find_index(tracks, &(&1["type"] == type)) do
       nil ->
@@ -49,6 +51,7 @@ defmodule CapcutMcp.Tools.TimelineHelper do
   end
 
   @doc "Adds a material to the draft's materials map."
+  @spec add_material(map(), String.t(), map()) :: map()
   def add_material(draft, category, material) do
     materials = draft["materials"] || %{}
     updated_materials = Map.update(materials, category, [material], &(&1 ++ [material]))
@@ -56,6 +59,8 @@ defmodule CapcutMcp.Tools.TimelineHelper do
   end
 
   @doc "Validates that the track index is within bounds, or nil."
+  @spec validate_track_index([map()], non_neg_integer() | nil) ::
+          {:ok, non_neg_integer() | nil} | {:error, String.t()}
   def validate_track_index(_tracks, nil), do: {:ok, nil}
 
   def validate_track_index(tracks, idx)

@@ -130,6 +130,7 @@ defmodule CapcutMcp.CapCut.ProjectStore do
 
   defp cache_put(id, path, draft), do: :ets.insert(@table, {id, path, draft})
 
+  @spec ensure_path(String.t(), Path.t()) :: {:ok, Path.t()} | {:error, term()}
   defp ensure_path(id, root_path) do
     case cache_lookup(id) do
       {:ok, path, _draft} ->
@@ -143,6 +144,8 @@ defmodule CapcutMcp.CapCut.ProjectStore do
     end
   end
 
+  @spec load_project(String.t(), Path.t()) ::
+          {:ok, {Path.t(), map()}} | {:error, :not_found | term()}
   defp load_project(id, root_path) do
     with {:ok, projects} <- Reader.list_projects(root_path),
          %ProjectMeta{path: path} <- Enum.find(projects, &(&1.id == id)),

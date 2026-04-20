@@ -7,7 +7,12 @@ defmodule CapcutMcp.MixProject do
       version: "0.1.0",
       elixir: "~> 1.15",
       start_permanent: Mix.env() == :prod,
-      deps: deps()
+      deps: deps(),
+      dialyzer: [
+        plt_add_apps: [:mix, :ex_unit],
+        ignore_warnings: ".dialyzer_ignore.exs",
+        flags: [:error_handling, :unknown, :underspecs]
+      ]
     ]
   end
 
@@ -22,7 +27,8 @@ defmodule CapcutMcp.MixProject do
     [
       {:jason, "~> 1.4"},
       {:telemetry, "~> 1.2"},
-      {:credo, "~> 1.7", only: [:dev, :test], runtime: false}
+      {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
+      {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false}
     ]
   end
 end
