@@ -22,13 +22,15 @@ defmodule CapcutMcp.MCP.Server do
   @impl true
   def handle_info({:line, line}, state) do
     with {:ok, msg} <- Protocol.decode_message(line),
+         :ok <- set_request_metadata(msg),
          response when not is_nil(response) <- Dispatcher.dispatch(msg) do
       IO.puts(:stdio, response)
     else
-      {:error, _} -> IO.puts(:stdio, Protocol.encode_error(nil, -32700, "Parse error"))
+      {:error, _} -> IO.puts(:stdio, Protocol.encode_error(nil, -32_700, "Parse error"))
       nil -> :ok
     end
 
+    Logger.reset_metadata()
     {:noreply, state}
   end
 
@@ -40,5 +42,16 @@ defmodule CapcutMcp.MCP.Server do
   def handle_info({:stdin_error, reason}, state) do
     Logger.error("stdin error: #{inspect(reason)}")
     {:stop, reason, state}
+  end
+
+  # Tag every log emitted downstream with the MCP request id + method so we can
+  # `grep mcp_request_id=42` across the whole pipeline, including tool code.
+  defp set_request_metadata(%{} = msg) do
+    Logger.metadata(
+      mcp_request_id: Map.get(msg, "id"),
+      mcp_method: Map.get(msg, "method")
+    )
+
+    :ok
   end
 end

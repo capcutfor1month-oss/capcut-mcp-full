@@ -12,6 +12,7 @@ defmodule CapcutMcp.CapCut.ProjectStore do
   use GenServer
   require Logger
   alias CapcutMcp.CapCut.{Draft, ProjectMeta, Reader, Writer}
+  alias CapcutMcp.Tools.TimelineHelper
 
   @table :capcut_project_cache
 
@@ -114,13 +115,17 @@ defmodule CapcutMcp.CapCut.ProjectStore do
 
   # ── Private helpers ──────────────────────────────────────────────────────────
 
+  # The ETS table is created synchronously in `init/1`, so by the time any
+  # caller reaches this function the table is guaranteed to exist — no
+  # defensive rescue needed. If the `ProjectStore` is not running at all,
+  # `get_project/1`'s fallback `GenServer.call` will surface that as a clean
+  # `:noproc` error, which is the correct signal.
+  @spec cache_lookup(String.t()) :: {:ok, Path.t(), map()} | :miss
   defp cache_lookup(id) do
     case :ets.lookup(@table, id) do
       [{^id, path, draft}] -> {:ok, path, draft}
       [] -> :miss
     end
-  rescue
-    ArgumentError -> :miss
   end
 
   defp cache_put(id, path, draft), do: :ets.insert(@table, {id, path, draft})
@@ -195,5 +200,5 @@ defmodule CapcutMcp.CapCut.ProjectStore do
     if safe == "", do: "Untitled_#{System.unique_integer([:positive])}", else: safe
   end
 
-  defp generate_uuid, do: CapcutMcp.Tools.TimelineHelper.generate_uuid()
+  defp generate_uuid, do: TimelineHelper.generate_uuid()
 end

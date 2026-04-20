@@ -2,12 +2,17 @@ defmodule CapcutMcp.Application do
   @moduledoc false
   use Application
 
+  alias CapcutMcp.CapCut.{BlendModes, ProjectStore}
+  alias CapcutMcp.MCP.{Server, StdinReader}
+  alias CapcutMcp.Telemetry
+
   @impl true
   def start(_type, _args) do
-    CapcutMcp.CapCut.BlendModes.init_table()
+    BlendModes.init_table()
+    Telemetry.attach_default_logger()
 
     children =
-      maybe_child(:start_project_store, CapcutMcp.CapCut.ProjectStore) ++
+      maybe_child(:start_project_store, ProjectStore) ++
         maybe_mcp_children()
 
     Supervisor.start_link(children, strategy: :one_for_one, name: CapcutMcp.Supervisor)
@@ -27,7 +32,7 @@ defmodule CapcutMcp.Application do
           start:
             {Supervisor, :start_link,
              [
-               [CapcutMcp.MCP.Server, CapcutMcp.MCP.StdinReader],
+               [Server, StdinReader],
                [strategy: :rest_for_one, name: CapcutMcp.MCP.Supervisor]
              ]},
           type: :supervisor

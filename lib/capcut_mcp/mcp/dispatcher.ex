@@ -1,46 +1,48 @@
 defmodule CapcutMcp.MCP.Dispatcher do
   @moduledoc "Routes JSON-RPC tool calls to the appropriate tool module."
+  require Logger
   alias CapcutMcp.MCP.Protocol
 
   alias CapcutMcp.Tools.{
-    ListProjects,
+    AddClip,
+    AddText,
+    CreateProject,
     GetProject,
     GetTimeline,
-    CreateProject,
-    AddText,
-    AddClip,
-    RemoveClip,
-    ReadDraftJson,
-    SetClipVolume,
-    SetClipLoop,
+    ListProjects,
     MoveClip,
-    SetClipTransform,
+    ReadDraftJson,
+    RemoveClip,
+    SetClipBlendMode,
+    SetClipLoop,
     SetClipOpacity,
-    TrimClip,
-    SetClipBlendMode
+    SetClipTransform,
+    SetClipVolume,
+    TrimClip
   }
 
   @tools [
-    ListProjects,
+    AddClip,
+    AddText,
+    CreateProject,
     GetProject,
     GetTimeline,
-    CreateProject,
-    AddText,
-    AddClip,
-    RemoveClip,
-    ReadDraftJson,
-    SetClipVolume,
-    SetClipLoop,
+    ListProjects,
     MoveClip,
-    SetClipTransform,
+    ReadDraftJson,
+    RemoveClip,
+    SetClipBlendMode,
+    SetClipLoop,
     SetClipOpacity,
-    TrimClip,
-    SetClipBlendMode
+    SetClipTransform,
+    SetClipVolume,
+    TrimClip
   ]
 
   @tool_definitions Enum.map(@tools, & &1.definition())
   @tool_by_name Map.new(@tools, fn mod -> {mod.definition()["name"], mod} end)
 
+  @spec dispatch(map()) :: String.t() | nil
   def dispatch(%{"method" => "initialize", "id" => id}) do
     Protocol.encode_response(id, %{
       "protocolVersion" => "2024-11-05",
@@ -64,30 +66,51 @@ defmodule CapcutMcp.MCP.Dispatcher do
         "params" => %{"name" => name} = params
       }) do
     args = Map.get(params, "arguments", %{})
+    Logger.metadata(tool: name, request_id: id)
 
-    with {:ok, tool} <- fetch_tool(name),
-         :ok <- validate_required(tool.definition(), args),
-         {:ok, text} <- tool.execute(args) do
-      Protocol.encode_response(id, %{"content" => [%{"type" => "text", "text" => text}]})
-    else
-      {:error, :tool_not_found} ->
-        Protocol.encode_error(id, -32601, "Tool not found: #{name}")
-
-      {:error, {:missing_required, msg}} ->
-        Protocol.encode_error(id, -32602, msg)
-
-      {:error, reason} ->
-        Protocol.encode_error(id, -32602, to_string(reason))
-    end
+    :telemetry.span(
+      [:capcut_mcp, :tool, :execute],
+      %{tool: name, request_id: id},
+      fn -> run_and_encode(id, name, args) end
+    )
   end
 
   def dispatch(%{"id" => id}) do
-    Protocol.encode_error(id, -32601, "Method not found")
+    Protocol.encode_error(id, -32_601, "Method not found")
   end
 
   def dispatch(_msg), do: nil
 
   # ── Internals ────────────────────────────────────────────────────────────────
+
+  # Executes the tool, encodes the response, and returns a
+  # `{response, stop_metadata}` pair as expected by `:telemetry.span/3`.
+  defp run_and_encode(id, name, args) do
+    case run_tool(name, args) do
+      {:ok, text} ->
+        {Protocol.encode_response(id, %{"content" => [%{"type" => "text", "text" => text}]}),
+         %{tool: name, request_id: id, result: :ok}}
+
+      {:error, :tool_not_found} ->
+        {Protocol.encode_error(id, -32_601, "Tool not found: #{name}"),
+         %{tool: name, request_id: id, result: :error, reason: :tool_not_found}}
+
+      {:error, {:missing_required, msg}} ->
+        {Protocol.encode_error(id, -32_602, msg),
+         %{tool: name, request_id: id, result: :error, reason: :missing_required}}
+
+      {:error, reason} ->
+        {Protocol.encode_error(id, -32_602, to_string(reason)),
+         %{tool: name, request_id: id, result: :error, reason: reason}}
+    end
+  end
+
+  defp run_tool(name, args) do
+    with {:ok, tool} <- fetch_tool(name),
+         :ok <- validate_required(tool.definition(), args) do
+      tool.execute(args)
+    end
+  end
 
   defp fetch_tool(name) do
     case Map.fetch(@tool_by_name, name) do
