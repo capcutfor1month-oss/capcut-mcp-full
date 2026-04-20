@@ -12,6 +12,18 @@ defmodule CapcutMcp.MixProject do
         plt_add_apps: [:mix, :ex_unit],
         ignore_warnings: ".dialyzer_ignore.exs",
         flags: [:error_handling, :unknown, :underspecs]
+      ],
+      test_coverage: [tool: ExCoveralls]
+    ]
+  end
+
+  def cli do
+    [
+      preferred_envs: [
+        coveralls: :test,
+        "coveralls.detail": :test,
+        "coveralls.html": :test,
+        "coveralls.json": :test
       ]
     ]
   end
@@ -28,7 +40,8 @@ defmodule CapcutMcp.MixProject do
       {:jason, "~> 1.4"},
       {:telemetry, "~> 1.2"},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
-      {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false}
+      {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
+      {:excoveralls, "~> 0.18", only: :test}
     ]
   end
 end
