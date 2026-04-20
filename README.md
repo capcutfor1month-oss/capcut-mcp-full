@@ -224,6 +224,9 @@ mix test
 # Code style (strict)
 mix credo --strict
 
+# Static analysis (first run builds PLT, ~1-2 min)
+mix dialyzer
+
 # Format check
 mix format --check-formatted
 
@@ -247,4 +250,5 @@ iex -S mix run --no-halt
 - **Jason** -- JSON encode/decode
 - **:telemetry** -- structured events for every tool call
 - **Credo** (`--strict`) -- zero issues
-- **ExUnit** -- 73 tests
+- **Dialyzer** (`:underspecs`, `:error_handling`, `:unknown`) -- zero warnings
+- **ExUnit** -- 82 tests (incl. JSON-RPC integration tests with telemetry assertions)
