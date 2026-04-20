@@ -39,7 +39,8 @@ defmodule CapcutMcp.Tools.TimelineHelperTest do
     end
 
     test "returns error for unknown segment" do
-      assert {:error, "Segment not found: unknown"} = TimelineHelper.find_segment(@draft, "unknown")
+      assert {:error, "Segment not found: unknown"} =
+               TimelineHelper.find_segment(@draft, "unknown")
     end
 
     test "returns error for empty tracks" do
