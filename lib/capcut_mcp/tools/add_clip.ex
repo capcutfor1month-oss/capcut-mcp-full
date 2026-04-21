@@ -2,8 +2,6 @@ defmodule CapcutMcp.Tools.AddClip do
   @moduledoc "MCP tool: add a video or audio clip to a CapCut project timeline."
   @behaviour CapcutMcp.Tool
 
-  require Logger
-
   alias CapcutMcp.CapCut.ProjectStore
   alias CapcutMcp.Tools.{TimelineHelper, ToolArgs}
 
@@ -60,11 +58,10 @@ defmodule CapcutMcp.Tools.AddClip do
     tracks = draft["tracks"] || []
 
     with {:ok, validated_file_path} <- validate_file_path(file_path),
+         {:ok, track_type} <- detect_type(validated_file_path),
          {:ok, {validated_start_ms, validated_duration_ms}} <-
            TimelineHelper.validate_timing(start_ms, duration_ms),
          {:ok, validated_track_index} <- TimelineHelper.validate_track_index(tracks, track_index) do
-      track_type = detect_type(validated_file_path)
-
       material =
         build_material(material_id, track_type, validated_file_path, validated_duration_ms)
 
@@ -142,14 +139,16 @@ defmodule CapcutMcp.Tools.AddClip do
 
     cond do
       ext in @video_exts ->
-        "video"
+        {:ok, "video"}
 
       ext in @audio_exts ->
-        "audio"
+        {:ok, "audio"}
 
       true ->
-        Logger.warning("Unknown file extension #{inspect(ext)} for #{path}, defaulting to video")
-        "video"
+        supported = Enum.join(@video_exts ++ @audio_exts, ", ")
+
+        {:error,
+         "Unsupported file extension #{inspect(ext)} for #{path}. Supported: #{supported}"}
     end
   end
 end

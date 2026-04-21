@@ -222,14 +222,13 @@ defmodule CapcutMcp.CapCut.ProjectStore do
 
   defp update_root_meta(root_path, id, name, project_path) do
     meta_file = Path.join(root_path, "root_meta_info.json")
-    default_meta = %{"all_draft_store" => [], "draft_ids" => 0, "root_path" => root_path}
 
     existing =
       with {:ok, content} <- File.read(meta_file),
-           {:ok, data} <- Jason.decode(content) do
+           {:ok, data} when is_map(data) <- Jason.decode(content) do
         data
       else
-        _ -> default_meta
+        _ -> %{}
       end
 
     now = System.os_time(:microsecond)
@@ -248,11 +247,20 @@ defmodule CapcutMcp.CapCut.ProjectStore do
       "draft_is_invisible" => false
     }
 
-    updated = %{
+    # Use Map.update/4 with defaults so a foreign-shaped but valid JSON — e.g. a
+    # future CapCut version that drops one of these keys — doesn't crash the
+    # GenServer.
+    updated =
       existing
-      | "all_draft_store" => [new_entry | existing["all_draft_store"]],
-        "draft_ids" => existing["draft_ids"] + 1
-    }
+      |> Map.put_new("root_path", root_path)
+      |> Map.update("all_draft_store", [new_entry], fn
+        list when is_list(list) -> [new_entry | list]
+        _ -> [new_entry]
+      end)
+      |> Map.update("draft_ids", 1, fn
+        n when is_integer(n) -> n + 1
+        _ -> 1
+      end)
 
     Writer.write_root_meta(root_path, updated)
   end

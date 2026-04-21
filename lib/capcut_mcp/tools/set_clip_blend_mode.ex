@@ -73,7 +73,7 @@ defmodule CapcutMcp.Tools.SetClipBlendMode do
   defp add_new_mix_mode(draft, clip_id, effects, blend_mode, value) do
     effect_id = TimelineHelper.generate_uuid()
     effect = MixModeEffect.build(effect_id, blend_mode, value)
-    draft_with_effect = put_in(draft, ["materials", "effects"], effects ++ [effect])
+    draft_with_effect = put_effects(draft, effects ++ [effect])
 
     TimelineHelper.update_segment(draft_with_effect, clip_id, fn seg ->
       Map.update(seg, "extra_material_refs", [effect_id], &(&1 ++ [effect_id]))
@@ -95,7 +95,15 @@ defmodule CapcutMcp.Tools.SetClipBlendMode do
           other
       end)
 
-    {:ok, put_in(draft, ["materials", "effects"], updated_effects)}
+    {:ok, put_effects(draft, updated_effects)}
+  end
+
+  # `put_in(draft, ["materials", "effects"], …)` crashes if `draft` has no
+  # "materials" key (externally authored drafts, or very old CapCut schemas).
+  # Walk the structure ourselves so a missing parent map is silently created.
+  defp put_effects(draft, effects) do
+    materials = Map.get(draft, "materials", %{})
+    Map.put(draft, "materials", Map.put(materials, "effects", effects))
   end
 
   defp require_video_segment(%{"clip" => clip}) when is_map(clip), do: :ok

@@ -723,6 +723,25 @@ defmodule CapcutMcp.ToolsTest do
   end
 
   @tag :tmp_dir
+  test "AddClip.execute rejects unknown file extensions instead of silently defaulting",
+       %{project_id: id} do
+    # A .txt (or any unrecognized) extension used to be silently treated as
+    # video, which put garbage into the timeline. We'd rather fail loudly.
+    assert {:error, msg} =
+             AddClip.execute(%{
+               "project_id" => id,
+               "file_path" => "C:/Users/tspor/Documents/notes.txt",
+               "start_ms" => 0,
+               "duration_ms" => 5000
+             })
+
+    assert msg =~ "Unsupported file extension"
+
+    {:ok, draft} = ProjectStore.get_project(id)
+    refute Enum.any?(draft["tracks"], fn track -> track["type"] == "video" end)
+  end
+
+  @tag :tmp_dir
   test "RemoveClip.execute removes a segment by ID", %{project_id: id} do
     # Load into cache first
     {:ok, _} = ProjectStore.get_project(id)

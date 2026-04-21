@@ -279,6 +279,29 @@ defmodule CapcutMcp.Tools.SetClipBlendModeTest do
     end
   end
 
+  describe "execute/1 — drafts without a materials map" do
+    @tag :tmp_dir
+    test "creates materials.effects on drafts that lack a materials key", %{project_id: id} do
+      # Some externally authored drafts (older schemas, hand-crafted fixtures)
+      # lack the top-level "materials" key entirely. The blend-mode writer used
+      # to crash under `put_in(draft, ["materials", "effects"], …)` in that
+      # case; the defensive writer must now create the nested structure.
+      {:ok, draft} = ProjectStore.get_project(id)
+      :ok = ProjectStore.update_project(id, Map.delete(draft, "materials"))
+
+      assert {:ok, _} =
+               SetClipBlendMode.execute(%{
+                 "project_id" => id,
+                 "clip_id" => "video-seg-001",
+                 "mode" => "soft_light",
+                 "value" => 0.5
+               })
+
+      {:ok, updated_draft} = ProjectStore.get_project(id)
+      assert [%{"type" => "mix_mode", "value" => 0.5}] = updated_draft["materials"]["effects"]
+    end
+  end
+
   # ── Helpers ────────────────────────────────────────────────────────────────
 
   defp find_video_segment(draft) do

@@ -173,21 +173,29 @@ defmodule CapcutMcp.CapCut.BlendModes do
       modes =
         data
         |> Map.get("resourceList", [])
-        |> Enum.map(fn entry ->
-          name_id = entry["nameId"]
-
-          %{
-            name_id: name_id,
-            label: Map.get(@name_labels, name_id, name_id),
-            effect_id: entry["effectId"],
-            resource_id: entry["resourceId"],
-            path: Path.join(mix_mode_dir, entry["path"])
-          }
-        end)
+        |> Enum.flat_map(&decode_mode_entry(&1, mix_mode_dir))
 
       {:ok, modes}
     end
   end
+
+  # A future or tampered-with MixMode.json entry can omit `nameId` or `path`.
+  # Silently drop such entries instead of crashing `Path.join/2` (nil arg) or
+  # `find_mode/1`'s `String.downcase(nil)` on subsequent lookups.
+  defp decode_mode_entry(%{"nameId" => name_id, "path" => rel_path} = entry, mix_mode_dir)
+       when is_binary(name_id) and is_binary(rel_path) do
+    [
+      %{
+        name_id: name_id,
+        label: Map.get(@name_labels, name_id, name_id),
+        effect_id: entry["effectId"],
+        resource_id: entry["resourceId"],
+        path: Path.join(mix_mode_dir, rel_path)
+      }
+    ]
+  end
+
+  defp decode_mode_entry(_incomplete, _mix_mode_dir), do: []
 
   defp apps_path do
     cond do

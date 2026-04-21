@@ -29,4 +29,16 @@ defmodule CapcutMcp.CapCut.WriterTest do
     {:ok, content} = File.read(Path.join(tmp, "root_meta_info.json"))
     assert {:ok, %{"draft_ids" => 0}} = Jason.decode(content)
   end
+
+  @tag :tmp_dir
+  test "write_draft removes the .tmp file when rename/backup fails", %{tmp_dir: tmp} do
+    # Make `draft_content.json` a directory so File.copy (backup) cannot succeed.
+    # The .tmp file must NOT be left behind — otherwise a loop of retries
+    # would litter the CapCut project folder with orphaned .tmp garbage.
+    draft_dir_target = Path.join(tmp, "draft_content.json")
+    File.mkdir_p!(draft_dir_target)
+
+    assert {:error, _} = Writer.write_draft(tmp, %{"id" => "v1"})
+    refute File.exists?(Path.join(tmp, "draft_content.json.tmp"))
+  end
 end

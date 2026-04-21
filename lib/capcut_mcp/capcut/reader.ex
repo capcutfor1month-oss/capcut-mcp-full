@@ -75,13 +75,23 @@ defmodule CapcutMcp.CapCut.Reader do
 
   defp decode_entry(_incomplete, _expanded_root), do: []
 
+  # Windows filesystems are case-insensitive, and Path.expand normalizes to `/`
+  # but root_meta_info.json can store either separator. Normalize both sides
+  # (case and separator) before comparing, so a config with `CAPCUT_PATH=C:\…`
+  # doesn't silently reject draft entries written as `c:\…`.
   defp path_under_root?(path, expanded_root) do
-    expanded = Path.expand(path)
+    expanded = path |> Path.expand() |> normalize_for_compare()
+    root = normalize_for_compare(expanded_root)
 
-    expanded == expanded_root or
-      String.starts_with?(expanded, expanded_root <> "/") or
-      String.starts_with?(expanded, expanded_root <> "\\")
+    expanded == root or String.starts_with?(expanded, root <> "/")
   end
+
+  defp normalize_for_compare(path) do
+    normalized = String.replace(path, "\\", "/")
+    if windows?(), do: String.downcase(normalized), else: normalized
+  end
+
+  defp windows?, do: match?({:win32, _}, :os.type())
 
   defp emit_rejected(path) do
     Logger.warning(

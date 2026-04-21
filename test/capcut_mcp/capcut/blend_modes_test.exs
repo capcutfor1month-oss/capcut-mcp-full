@@ -65,6 +65,46 @@ defmodule CapcutMcp.CapCut.BlendModesTest do
   end
 
   @tag :tmp_dir
+  test "skips MixMode.json entries missing nameId or path instead of crashing", %{
+    tmp_dir: tmp_dir
+  } do
+    previous_localappdata = System.get_env("LOCALAPPDATA")
+    previous_apps_path = System.get_env("CAPCUT_APPS_PATH")
+
+    on_exit(fn ->
+      restore_env("LOCALAPPDATA", previous_localappdata)
+      restore_env("CAPCUT_APPS_PATH", previous_apps_path)
+    end)
+
+    System.delete_env("CAPCUT_APPS_PATH")
+    System.put_env("LOCALAPPDATA", tmp_dir)
+
+    mix_mode_dir = Path.join([tmp_dir, "CapCut", "Apps", "9.0.0", "Resources", "MixMode"])
+    File.mkdir_p!(mix_mode_dir)
+
+    File.write!(
+      Path.join(mix_mode_dir, "MixMode.json"),
+      Jason.encode!(%{
+        "resourceList" => [
+          %{
+            "nameId" => "soft_light",
+            "effectId" => "fx1",
+            "resourceId" => "r1",
+            "path" => "soft-light"
+          },
+          %{"effectId" => "no-name-id", "path" => "foo"},
+          %{"nameId" => "no_path", "effectId" => "fx2"},
+          "not-even-a-map"
+        ]
+      })
+    )
+
+    assert {:ok, modes} = BlendModes.list_modes()
+    assert [%{name_id: "soft_light"}] = modes
+    assert {:ok, _} = BlendModes.find_mode("soft_light")
+  end
+
+  @tag :tmp_dir
   test "load failure emits :load telemetry with result: :error", %{tmp_dir: tmp_dir} do
     previous_apps_path = System.get_env("CAPCUT_APPS_PATH")
     on_exit(fn -> restore_env("CAPCUT_APPS_PATH", previous_apps_path) end)

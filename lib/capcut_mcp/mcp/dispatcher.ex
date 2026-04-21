@@ -103,8 +103,12 @@ defmodule CapcutMcp.MCP.Dispatcher do
         {Protocol.encode_error(id, -32_602, msg),
          %{tool: name, request_id: id, result: :error, reason: :invalid_arguments}}
 
+      {:error, reason} when is_binary(reason) ->
+        {Protocol.encode_error(id, -32_602, reason),
+         %{tool: name, request_id: id, result: :error, reason: reason}}
+
       {:error, reason} ->
-        {Protocol.encode_error(id, -32_602, to_string(reason)),
+        {Protocol.encode_error(id, -32_602, inspect(reason)),
          %{tool: name, request_id: id, result: :error, reason: reason}}
     end
   end

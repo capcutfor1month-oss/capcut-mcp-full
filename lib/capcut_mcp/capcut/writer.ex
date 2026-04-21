@@ -23,8 +23,15 @@ defmodule CapcutMcp.CapCut.Writer do
     tmp_file = target <> ".tmp"
 
     with :ok <- File.write(tmp_file, content),
-         :ok <- maybe_backup(target, Keyword.get(opts, :backup, false)) do
-      File.rename(tmp_file, target)
+         :ok <- maybe_backup(target, Keyword.get(opts, :backup, false)),
+         :ok <- File.rename(tmp_file, target) do
+      :ok
+    else
+      {:error, _} = err ->
+        # Rename/backup failed — the temp file is leftover garbage that would
+        # otherwise accumulate next to CapCut's project files on every retry.
+        _ = File.rm(tmp_file)
+        err
     end
   end
 

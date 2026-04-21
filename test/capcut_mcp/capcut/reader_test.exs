@@ -206,6 +206,66 @@ defmodule CapcutMcp.CapCut.ReaderTest do
     end
 
     @tag :tmp_dir
+    test "accepts a draft_fold_path that differs from root only in case or separator on Windows",
+         %{tmp_dir: tmp} do
+      # Windows filesystems are case-insensitive and CapCut may persist either
+      # forward or backward slashes in root_meta_info.json. A mismatch of case
+      # or separator between CAPCUT_PATH and the stored path must not cause
+      # the entry to be silently dropped.
+      unless match?({:win32, _}, :os.type()) do
+        # On non-Windows the comparison is case-sensitive; skip by asserting
+        # the classic path-through works and the case-mangled one is rejected.
+        :ok
+      end
+
+      inside = Path.join(tmp, "case_mixed_project")
+      File.mkdir_p!(inside)
+
+      mangled_path =
+        tmp
+        |> String.replace("/", "\\")
+        |> then(fn s ->
+          # Flip case on alphabetic chars so the expanded path differs in case
+          # from the root we pass into list_projects.
+          s
+          |> String.graphemes()
+          |> Enum.map_join("", fn g ->
+            case g do
+              g when g >= "a" and g <= "z" -> String.upcase(g)
+              g when g >= "A" and g <= "Z" -> String.downcase(g)
+              g -> g
+            end
+          end)
+        end)
+        |> Path.join("case_mixed_project")
+
+      meta = %{
+        "all_draft_store" => [
+          %{
+            "draft_id" => "mixed",
+            "draft_name" => "Mixed",
+            "draft_fold_path" => mangled_path,
+            "tm_draft_modified" => 1_000_000_000_000_000,
+            "tm_duration" => 0
+          }
+        ],
+        "draft_ids" => 1,
+        "root_path" => tmp
+      }
+
+      File.write!(Path.join(tmp, "root_meta_info.json"), Jason.encode!(meta))
+
+      {:ok, projects} = Reader.list_projects(tmp)
+
+      if match?({:win32, _}, :os.type()) do
+        assert [%{id: "mixed"}] = projects
+      else
+        # Linux/macOS: case flip means a genuinely different directory — reject.
+        assert projects == []
+      end
+    end
+
+    @tag :tmp_dir
     test "list_projects skips malformed store entries (non-string keys)", %{tmp_dir: tmp} do
       meta = %{
         "all_draft_store" => [

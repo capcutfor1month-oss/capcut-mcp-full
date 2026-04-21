@@ -92,6 +92,22 @@ defmodule CapcutMcp.CapCut.ProjectStoreTest do
     assert new_id in ids
   end
 
+  @tag :tmp_dir
+  test "create_project tolerates root_meta_info.json that lacks expected keys", %{tmp: tmp} do
+    # A future CapCut build (or a hand-edited meta file) might ship without
+    # `all_draft_store` or `draft_ids`. The store must still create the project
+    # instead of crashing the GenServer on a map-update KeyError.
+    File.write!(Path.join(tmp, "root_meta_info.json"), Jason.encode!(%{"unexpected" => "shape"}))
+
+    assert {:ok, new_id} = ProjectStore.create_project(%{"name" => "Resilient"})
+
+    {:ok, content} = File.read(Path.join(tmp, "root_meta_info.json"))
+    {:ok, meta} = Jason.decode(content)
+    assert meta["unexpected"] == "shape"
+    assert [%{"draft_id" => ^new_id}] = meta["all_draft_store"]
+    assert meta["draft_ids"] == 1
+  end
+
   # ── Telemetry cases (D1b) ──────────────────────────────────────────────────
 
   @cache_events [
