@@ -118,13 +118,14 @@ defmodule CapcutMcp.MCP.DispatcherIntegrationTest do
     response = dispatch(msg)
 
     assert %{"result" => %{"tools" => tools}} = response
-    assert length(tools) == 15
+    assert length(tools) == 16
     assert Enum.all?(tools, &is_map(&1["inputSchema"]))
     assert Enum.all?(tools, &is_binary(&1["name"]))
 
     names = Enum.map(tools, & &1["name"])
     assert "list_projects" in names
     assert "add_text" in names
+    assert "remove_project" in names
   end
 
   @tag :tmp_dir

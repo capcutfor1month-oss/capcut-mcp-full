@@ -40,8 +40,23 @@ defmodule CapcutMcp.CapCut.ProjectStore do
   @spec get_project(String.t()) :: {:ok, map()} | {:error, :not_found | term()}
   def get_project(id) do
     case cache_lookup(id) do
-      {:ok, _path, draft} -> {:ok, draft}
+      {:ok, _path, _meta, draft} -> {:ok, draft}
       :miss -> GenServer.call(__MODULE__, {:load_project, id})
+    end
+  end
+
+  @doc """
+  Like `get_project/1` but returns the `ProjectMeta` (from `root_meta_info.json`)
+  alongside the draft map. Tools that render project identity should use this —
+  `draft_content.json`'s internal `"id"` and `"name"` can diverge from what the
+  manifest says, and only the manifest's values are stable addresses.
+  """
+  @spec get_project_with_meta(String.t()) ::
+          {:ok, %{meta: ProjectMeta.t(), draft: map()}} | {:error, :not_found | term()}
+  def get_project_with_meta(id) do
+    case cache_lookup(id) do
+      {:ok, _path, meta, draft} -> {:ok, %{meta: meta, draft: draft}}
+      :miss -> GenServer.call(__MODULE__, {:load_project_with_meta, id})
     end
   end
 
@@ -50,6 +65,19 @@ defmodule CapcutMcp.CapCut.ProjectStore do
 
   @spec create_project(map()) :: {:ok, String.t()} | {:error, term()}
   def create_project(params), do: GenServer.call(__MODULE__, {:create_project, params})
+
+  @doc """
+  Removes a project from `root_meta_info.json` and (by default) deletes its
+  folder on disk. Pass `keep_files: true` to leave the folder intact.
+
+  Refuses to delete any folder whose `draft_fold_path` lies outside the
+  configured CapCut root — such entries indicate a corrupt or hand-edited
+  manifest and must not trigger a destructive recursive delete.
+  """
+  @spec remove_project(String.t(), keyword()) ::
+          :ok | {:error, :not_found | :path_outside_root | term()}
+  def remove_project(id, opts \\ []),
+    do: GenServer.call(__MODULE__, {:remove_project, id, opts})
 
   # ── Server callbacks ─────────────────────────────────────────────────────────
 
@@ -72,14 +100,31 @@ defmodule CapcutMcp.CapCut.ProjectStore do
   @impl true
   def handle_call({:load_project, id}, _from, state) do
     case cache_lookup(id) do
-      {:ok, _path, draft} ->
+      {:ok, _path, _meta, draft} ->
         {:reply, {:ok, draft}, state}
 
       :miss ->
         with {:ok, root} <- require_root_path(state),
-             {:ok, {path, draft}} <- load_project(id, root) do
-          cache_put(id, path, draft, :load)
+             {:ok, {path, meta, draft}} <- load_project(id, root) do
+          cache_put(id, path, meta, draft, :load)
           {:reply, {:ok, draft}, state}
+        else
+          {:error, _} = error -> {:reply, error, state}
+        end
+    end
+  end
+
+  @impl true
+  def handle_call({:load_project_with_meta, id}, _from, state) do
+    case cache_lookup(id) do
+      {:ok, _path, meta, draft} ->
+        {:reply, {:ok, %{meta: meta, draft: draft}}, state}
+
+      :miss ->
+        with {:ok, root} <- require_root_path(state),
+             {:ok, {path, meta, draft}} <- load_project(id, root) do
+          cache_put(id, path, meta, draft, :load)
+          {:reply, {:ok, %{meta: meta, draft: draft}}, state}
         else
           {:error, _} = error -> {:reply, error, state}
         end
@@ -89,9 +134,9 @@ defmodule CapcutMcp.CapCut.ProjectStore do
   @impl true
   def handle_call({:update_project, id, draft}, _from, state) do
     with {:ok, root} <- require_root_path(state),
-         {:ok, path} <- ensure_path(id, root),
+         {:ok, {path, meta}} <- ensure_path_with_meta(id, root),
          :ok <- Writer.write_draft(path, draft) do
-      cache_put(id, path, draft, :update)
+      cache_put(id, path, meta, draft, :update)
       {:reply, :ok, state}
     else
       {:error, _} = error -> {:reply, error, state}
@@ -102,6 +147,17 @@ defmodule CapcutMcp.CapCut.ProjectStore do
   def handle_call({:create_project, params}, _from, state) do
     case require_root_path(state) do
       {:ok, root} -> {:reply, do_create_project(root, params), state}
+      {:error, _} = err -> {:reply, err, state}
+    end
+  end
+
+  @impl true
+  def handle_call({:remove_project, id, opts}, _from, state) do
+    with {:ok, root} <- require_root_path(state),
+         :ok <- do_remove_project(root, id, opts) do
+      :ets.delete(@table, id)
+      {:reply, :ok, state}
+    else
       {:error, _} = err -> {:reply, err, state}
     end
   end
@@ -124,7 +180,15 @@ defmodule CapcutMcp.CapCut.ProjectStore do
       with :ok <- File.mkdir_p(project_path),
            :ok <- Writer.write_draft(project_path, draft_map),
            :ok <- update_root_meta(root, id, name, project_path) do
-        cache_put(id, project_path, draft_map, :create)
+        meta = %ProjectMeta{
+          id: id,
+          name: name,
+          path: project_path,
+          modified_at: System.os_time(:microsecond),
+          duration_ms: 0
+        }
+
+        cache_put(id, project_path, meta, draft_map, :create)
         {:ok, id}
       end
     end
@@ -170,12 +234,12 @@ defmodule CapcutMcp.CapCut.ProjectStore do
   # defensive rescue needed. If the `ProjectStore` is not running at all,
   # `get_project/1`'s fallback `GenServer.call` will surface that as a clean
   # `:noproc` error, which is the correct signal.
-  @spec cache_lookup(String.t()) :: {:ok, Path.t(), map()} | :miss
+  @spec cache_lookup(String.t()) :: {:ok, Path.t(), ProjectMeta.t(), map()} | :miss
   defp cache_lookup(id) do
     case :ets.lookup(@table, id) do
-      [{^id, path, draft}] ->
+      [{^id, path, meta, draft}] ->
         emit_cache_event(:hit, %{id: id})
-        {:ok, path, draft}
+        {:ok, path, meta, draft}
 
       [] ->
         emit_cache_event(:miss, %{id: id})
@@ -183,37 +247,38 @@ defmodule CapcutMcp.CapCut.ProjectStore do
     end
   end
 
-  @spec cache_put(String.t(), Path.t(), map(), :load | :update | :create) :: true
-  defp cache_put(id, path, draft, reason) do
+  @spec cache_put(String.t(), Path.t(), ProjectMeta.t(), map(), :load | :update | :create) :: true
+  defp cache_put(id, path, meta, draft, reason) do
     emit_cache_event(:write, %{id: id, reason: reason})
-    :ets.insert(@table, {id, path, draft})
+    :ets.insert(@table, {id, path, meta, draft})
   end
 
   defp emit_cache_event(kind, metadata) do
     :telemetry.execute([:capcut_mcp, :cache, kind], %{count: 1}, metadata)
   end
 
-  @spec ensure_path(String.t(), Path.t()) :: {:ok, Path.t()} | {:error, term()}
-  defp ensure_path(id, root_path) do
+  @spec ensure_path_with_meta(String.t(), Path.t()) ::
+          {:ok, {Path.t(), ProjectMeta.t()}} | {:error, term()}
+  defp ensure_path_with_meta(id, root_path) do
     case cache_lookup(id) do
-      {:ok, path, _draft} ->
-        {:ok, path}
+      {:ok, path, meta, _draft} ->
+        {:ok, {path, meta}}
 
       :miss ->
-        with {:ok, {path, draft}} <- load_project(id, root_path) do
-          cache_put(id, path, draft, :load)
-          {:ok, path}
+        with {:ok, {path, meta, draft}} <- load_project(id, root_path) do
+          cache_put(id, path, meta, draft, :load)
+          {:ok, {path, meta}}
         end
     end
   end
 
   @spec load_project(String.t(), Path.t()) ::
-          {:ok, {Path.t(), map()}} | {:error, :not_found | term()}
+          {:ok, {Path.t(), ProjectMeta.t(), map()}} | {:error, :not_found | term()}
   defp load_project(id, root_path) do
     with {:ok, projects} <- Reader.list_projects(root_path),
-         %ProjectMeta{path: path} <- Enum.find(projects, &(&1.id == id)),
+         %ProjectMeta{path: path} = meta <- Enum.find(projects, &(&1.id == id)),
          {:ok, draft} <- Reader.read_draft(path) do
-      {:ok, {path, draft}}
+      {:ok, {path, meta, draft}}
     else
       nil -> {:error, :not_found}
       error -> error
@@ -264,6 +329,59 @@ defmodule CapcutMcp.CapCut.ProjectStore do
 
     Writer.write_root_meta(root_path, updated)
   end
+
+  @spec do_remove_project(Path.t(), String.t(), keyword()) ::
+          :ok | {:error, :not_found | :path_outside_root | term()}
+  defp do_remove_project(root, id, opts) do
+    meta_file = Path.join(root, "root_meta_info.json")
+
+    with {:ok, content} <- File.read(meta_file),
+         {:ok, data} when is_map(data) <- Jason.decode(content),
+         {:ok, entry, remaining} <- extract_entry(data, id),
+         :ok <- maybe_delete_folder(entry, root, Keyword.get(opts, :keep_files, false)) do
+      Writer.write_root_meta(root, apply_remaining(data, remaining), backup: true)
+    end
+  end
+
+  defp extract_entry(data, id) do
+    store = Map.get(data, "all_draft_store", [])
+
+    with true <- is_list(store),
+         {[entry], remaining} <-
+           Enum.split_with(store, fn
+             %{"draft_id" => ^id} -> true
+             _ -> false
+           end) do
+      {:ok, entry, remaining}
+    else
+      _ -> {:error, :not_found}
+    end
+  end
+
+  defp apply_remaining(data, remaining) do
+    data
+    |> Map.put("all_draft_store", remaining)
+    |> Map.update("draft_ids", length(remaining), fn
+      n when is_integer(n) and n > 0 -> n - 1
+      _ -> length(remaining)
+    end)
+  end
+
+  defp maybe_delete_folder(_entry, _root, true), do: :ok
+
+  defp maybe_delete_folder(%{"draft_fold_path" => path}, root, false) when is_binary(path) do
+    if Reader.path_under_root?(path, Path.expand(root)) do
+      case File.rm_rf(path) do
+        {:ok, _} -> :ok
+        {:error, reason, _} -> {:error, reason}
+      end
+    else
+      {:error, :path_outside_root}
+    end
+  end
+
+  # Entry without a draft_fold_path — nothing to remove on disk, not a failure.
+  defp maybe_delete_folder(_entry, _root, false), do: :ok
 
   defp sanitize_dir_name(name) do
     safe =

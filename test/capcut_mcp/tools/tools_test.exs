@@ -84,8 +84,60 @@ defmodule CapcutMcp.ToolsTest do
   @tag :tmp_dir
   test "GetProject.execute returns project info", %{project_id: id} do
     assert {:ok, text} = GetProject.execute(%{"project_id" => id})
+    assert text =~ "Name: Tool Test"
+    assert text =~ "ID: #{id}"
     assert text =~ "1920"
     assert text =~ "30"
+  end
+
+  @tag :tmp_dir
+  test "GetProject.execute surfaces root_meta name/id, not draft_content's internal fields",
+       %{tmp_dir: tmp} do
+    root_meta_id = "ROOT-META-DIVERGENT"
+    content_id = "INTERNAL-CONTENT-ID"
+
+    project_path = Path.join(tmp, "divergent_getproject")
+    File.mkdir_p!(project_path)
+
+    File.write!(
+      Path.join(project_path, "draft_content.json"),
+      Jason.encode!(%{
+        "id" => content_id,
+        "name" => "",
+        "fps" => 24.0,
+        "duration" => 5_000_000,
+        "new_version" => "164.0.0",
+        "canvas_config" => %{"width" => 1280, "height" => 720, "ratio" => "16:9"},
+        "tracks" => []
+      })
+    )
+
+    existing = Jason.decode!(File.read!(Path.join(tmp, "root_meta_info.json")))
+
+    updated =
+      %{
+        existing
+        | "all_draft_store" =>
+            existing["all_draft_store"] ++
+              [
+                %{
+                  "draft_id" => root_meta_id,
+                  "draft_name" => "Manifest Name",
+                  "draft_fold_path" => project_path,
+                  "tm_draft_modified" => 1_750_000_000_000_000,
+                  "tm_duration" => 5_000_000
+                }
+              ],
+          "draft_ids" => 2
+      }
+
+    File.write!(Path.join(tmp, "root_meta_info.json"), Jason.encode!(updated))
+
+    assert {:ok, text} = GetProject.execute(%{"project_id" => root_meta_id})
+    assert text =~ "Name: Manifest Name"
+    assert text =~ "ID: #{root_meta_id}"
+    refute text =~ content_id
+    refute text =~ "(unnamed)"
   end
 
   @tag :tmp_dir
@@ -775,5 +827,81 @@ defmodule CapcutMcp.ToolsTest do
   test "RemoveClip.execute returns error for unknown clip ID", %{project_id: id} do
     assert {:error, msg} = RemoveClip.execute(%{"project_id" => id, "clip_id" => "NOPE"})
     assert msg =~ "not found"
+  end
+
+  # ── RemoveProject ──────────────────────────────────────────────────────────
+
+  alias CapcutMcp.Tools.RemoveProject
+
+  @tag :tmp_dir
+  test "RemoveProject.definition declares project_id as required" do
+    %{"name" => name, "inputSchema" => %{"required" => required}} = RemoveProject.definition()
+    assert name == "remove_project"
+    assert "project_id" in required
+    refute "keep_files" in required
+  end
+
+  @tag :tmp_dir
+  test "RemoveProject.execute removes entry and folder by default",
+       %{project_id: id} do
+    assert {:ok, msg} = RemoveProject.execute(%{"project_id" => id})
+    assert msg =~ id
+    assert {:ok, []} = ProjectStore.list_projects()
+  end
+
+  @tag :tmp_dir
+  test "RemoveProject.execute with keep_files: true leaves folder",
+       %{project_id: id} do
+    {:ok, [project]} = ProjectStore.list_projects()
+    project_path = project.path
+
+    assert {:ok, _msg} =
+             RemoveProject.execute(%{"project_id" => id, "keep_files" => true})
+
+    assert {:ok, []} = ProjectStore.list_projects()
+    assert File.exists?(project_path)
+  end
+
+  @tag :tmp_dir
+  test "RemoveProject.execute returns a formatted error for unknown id" do
+    assert {:error, msg} = RemoveProject.execute(%{"project_id" => "NOPE"})
+    assert msg =~ "not found"
+  end
+
+  @tag :tmp_dir
+  test "RemoveProject.execute surfaces path_outside_root with actionable guidance",
+       %{tmp_dir: tmp} do
+    evil_outside =
+      Path.join(
+        System.tmp_dir!(),
+        "capcut_mcp_evil_tool_outside_#{System.unique_integer([:positive])}"
+      )
+
+    File.mkdir_p!(evil_outside)
+    evil_file = Path.join(evil_outside, "survive.txt")
+    File.write!(evil_file, "keep")
+
+    meta = %{
+      "all_draft_store" => [
+        %{
+          "draft_id" => "EVIL-TOOL",
+          "draft_name" => "Evil",
+          "draft_fold_path" => evil_outside,
+          "tm_draft_modified" => 0,
+          "tm_duration" => 0
+        }
+      ],
+      "draft_ids" => 1,
+      "root_path" => tmp
+    }
+
+    File.write!(Path.join(tmp, "root_meta_info.json"), Jason.encode!(meta))
+
+    assert {:error, msg} = RemoveProject.execute(%{"project_id" => "EVIL-TOOL"})
+    assert msg =~ "outside the configured CapCut root"
+    assert msg =~ "keep_files=true"
+    assert File.read!(evil_file) == "keep"
+
+    File.rm_rf!(evil_outside)
   end
 end

@@ -31,6 +31,31 @@ defmodule CapcutMcp.CapCut.WriterTest do
   end
 
   @tag :tmp_dir
+  test "write_root_meta without backup leaves no .bak file", %{tmp_dir: tmp} do
+    File.write!(Path.join(tmp, "root_meta_info.json"), Jason.encode!(%{"draft_ids" => 1}))
+    assert :ok = Writer.write_root_meta(tmp, %{"draft_ids" => 0})
+    refute File.exists?(Path.join(tmp, "root_meta_info.json.bak"))
+  end
+
+  @tag :tmp_dir
+  test "write_root_meta with backup: true preserves prior contents in .bak", %{tmp_dir: tmp} do
+    File.write!(Path.join(tmp, "root_meta_info.json"), Jason.encode!(%{"draft_ids" => 1}))
+    assert :ok = Writer.write_root_meta(tmp, %{"draft_ids" => 0}, backup: true)
+    {:ok, bak} = File.read(Path.join(tmp, "root_meta_info.json.bak"))
+    assert {:ok, %{"draft_ids" => 1}} = Jason.decode(bak)
+    {:ok, new} = File.read(Path.join(tmp, "root_meta_info.json"))
+    assert {:ok, %{"draft_ids" => 0}} = Jason.decode(new)
+  end
+
+  @tag :tmp_dir
+  test "write_root_meta with backup: true succeeds when no prior file exists", %{tmp_dir: tmp} do
+    assert :ok = Writer.write_root_meta(tmp, %{"draft_ids" => 0}, backup: true)
+    refute File.exists?(Path.join(tmp, "root_meta_info.json.bak"))
+    {:ok, content} = File.read(Path.join(tmp, "root_meta_info.json"))
+    assert {:ok, %{"draft_ids" => 0}} = Jason.decode(content)
+  end
+
+  @tag :tmp_dir
   test "write_draft removes the .tmp file when rename/backup fails", %{tmp_dir: tmp} do
     # Make `draft_content.json` a directory so File.copy (backup) cannot succeed.
     # The .tmp file must NOT be left behind — otherwise a loop of retries

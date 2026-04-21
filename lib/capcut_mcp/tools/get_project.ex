@@ -23,14 +23,18 @@ defmodule CapcutMcp.Tools.GetProject do
 
   @impl true
   def execute(%{"project_id" => id}) do
-    with {:ok, draft} <- ProjectStore.get_project(id) do
+    # Name and ID come from root_meta_info.json (the manifest). `draft_content.json`
+    # has its own internal `"id"` and `"name"` that may diverge for CapCut-native
+    # projects — only the manifest's values are the stable address a caller can
+    # use to look the project up again.
+    with {:ok, %{meta: meta, draft: draft}} <- ProjectStore.get_project_with_meta(id) do
       canvas = draft["canvas_config"] || %{}
 
       text =
         Enum.join(
           [
-            "Name: #{draft["name"] || "(unnamed)"}",
-            "ID: #{draft["id"]}",
+            "Name: #{meta.name}",
+            "ID: #{meta.id}",
             "Canvas: #{canvas["width"]}x#{canvas["height"]} (#{canvas["ratio"]})",
             "FPS: #{draft["fps"]}",
             "Duration: #{draft["duration"]}us",

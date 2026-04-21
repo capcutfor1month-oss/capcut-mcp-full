@@ -79,7 +79,9 @@ defmodule CapcutMcp.CapCut.Reader do
   # but root_meta_info.json can store either separator. Normalize both sides
   # (case and separator) before comparing, so a config with `CAPCUT_PATH=C:\…`
   # doesn't silently reject draft entries written as `c:\…`.
-  defp path_under_root?(path, expanded_root) do
+  @doc false
+  @spec path_under_root?(String.t(), String.t()) :: boolean()
+  def path_under_root?(path, expanded_root) do
     expanded = path |> Path.expand() |> normalize_for_compare()
     root = normalize_for_compare(expanded_root)
 

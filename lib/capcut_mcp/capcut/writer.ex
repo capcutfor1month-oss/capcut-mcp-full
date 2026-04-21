@@ -10,13 +10,19 @@ defmodule CapcutMcp.CapCut.Writer do
          do: atomic_write(json_file, encoded, backup: true)
   end
 
-  @doc "Writes root_meta_info.json atomically."
-  @spec write_root_meta(String.t(), map()) :: :ok | {:error, term()}
-  def write_root_meta(root_path, data) do
+  @doc """
+  Writes root_meta_info.json atomically.
+
+  Pass `backup: true` to copy any existing `root_meta_info.json` to
+  `root_meta_info.json.bak` before overwriting — used by destructive paths
+  like project removal so a bad edit stays recoverable.
+  """
+  @spec write_root_meta(String.t(), map(), keyword()) :: :ok | {:error, term()}
+  def write_root_meta(root_path, data, opts \\ []) do
     meta_file = Path.join(root_path, "root_meta_info.json")
 
     with {:ok, encoded} <- Jason.encode(data),
-         do: atomic_write(meta_file, encoded, backup: false)
+         do: atomic_write(meta_file, encoded, backup: Keyword.get(opts, :backup, false))
   end
 
   defp atomic_write(target, content, opts) do
