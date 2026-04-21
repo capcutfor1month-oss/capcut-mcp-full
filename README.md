@@ -147,14 +147,17 @@ Restart Claude Desktop.
 
 ## Configuration
 
-By default the server looks for CapCut projects at:
-```text
-C:\Users\<you>\AppData\Local\CapCut\User Data\Projects\com.lveditor.draft
-```
+`CapcutMcp.CapCut.PathDiscovery` auto-discovers the CapCut projects folder on boot. It checks, in order:
 
-Override with the `CAPCUT_PATH` environment variable:
+1. The `CAPCUT_PATH` environment variable
+2. `%LOCALAPPDATA%\CapCut\User Data\Projects\com.lveditor.draft` — the standard Windows install path
+
+If neither resolves to an existing directory, the server still boots. The first tool call that needs disk access returns a descriptive error listing what was tried, so Claude can relay it back to you verbatim.
+
+Override the discovered path (e.g. for a portable install) with `CAPCUT_PATH`:
+
 ```bash
-CAPCUT_PATH="D:\CapCut\Projects" mix run --no-halt
+CAPCUT_PATH="D:\CapCut\Projects\com.lveditor.draft" mix run --no-halt
 ```
 
 Blend mode discovery reads CapCut's local app resources from:
@@ -175,11 +178,12 @@ Claude (stdin/stdout JSON-RPC 2.0)
   └── MCP.Server          GenServer -- stdin loop, dispatches messages
         └── MCP.Dispatcher  Pure -- routes tool calls by name
               └── Tools.*       Pure -- one module per tool (15 tools)
-                    ├── TimelineHelper  Shared -- segment lookup, validation, UUID
-                    ├── BlendModes      ETS-cached -- discovers CapCut MixMode resources
-                    └── ProjectStore    GenServer -- project cache + disk I/O
-                          ├── Reader  Pure -- reads JSON files
-                          └── Writer  Pure -- writes JSON files (atomic + backup)
+                    ├── TimelineHelper   Shared -- segment lookup, validation, UUID
+                    ├── BlendModes       ETS-cached -- discovers CapCut MixMode resources
+                    └── ProjectStore     GenServer -- project cache + disk I/O
+                          ├── PathDiscovery  Pure -- resolves projects root (env / LOCALAPPDATA)
+                          ├── Reader         Pure -- reads JSON files
+                          └── Writer         Pure -- writes JSON files (atomic + backup)
 ```
 
 OTP supervision tree:
@@ -278,5 +282,5 @@ iex -S mix run --no-halt
 - **:telemetry** -- structured events for every tool call
 - **Credo** (`--strict`) -- zero issues
 - **Dialyzer** (`:underspecs`, `:error_handling`, `:unknown`) -- zero warnings
-- **ExUnit** -- 125 tests (incl. JSON-RPC integration tests with telemetry assertions on tools + cache + blend-modes events, plus 2 doctests)
+- **ExUnit** -- 140 tests (incl. JSON-RPC integration tests with telemetry assertions on tools + cache + blend-modes + schema-version events, path-discovery fallbacks, plus 2 doctests)
 - **ExCoveralls** -- ~83% line coverage on application code (remaining gaps are the stdin-loop I/O layer and a few lazy disk helpers)

@@ -23,7 +23,7 @@ defmodule CapcutMcp.CapCut.ProjectStore do
 
   use GenServer
   require Logger
-  alias CapcutMcp.CapCut.{Draft, ProjectMeta, Reader, Writer}
+  alias CapcutMcp.CapCut.{Draft, PathDiscovery, ProjectMeta, Reader, Writer}
   alias CapcutMcp.Tools.TimelineHelper
 
   @table :capcut_project_cache
@@ -57,16 +57,16 @@ defmodule CapcutMcp.CapCut.ProjectStore do
   def init(opts) do
     :ets.new(@table, [:set, :protected, :named_table, read_concurrency: true])
 
-    root_path =
-      Keyword.get(opts, :root_path) ||
-        Application.get_env(:capcut_mcp, :capcut_path)
-
+    root_path = resolve_root_path(opts)
     {:ok, %{root_path: root_path}}
   end
 
   @impl true
   def handle_call(:list_projects, _from, state) do
-    {:reply, Reader.list_projects(state.root_path), state}
+    case require_root_path(state) do
+      {:ok, root} -> {:reply, Reader.list_projects(root), state}
+      {:error, _} = err -> {:reply, err, state}
+    end
   end
 
   @impl true
@@ -76,20 +76,20 @@ defmodule CapcutMcp.CapCut.ProjectStore do
         {:reply, {:ok, draft}, state}
 
       :miss ->
-        case load_project(id, state.root_path) do
-          {:ok, {path, draft}} ->
-            cache_put(id, path, draft, :load)
-            {:reply, {:ok, draft}, state}
-
-          error ->
-            {:reply, error, state}
+        with {:ok, root} <- require_root_path(state),
+             {:ok, {path, draft}} <- load_project(id, root) do
+          cache_put(id, path, draft, :load)
+          {:reply, {:ok, draft}, state}
+        else
+          {:error, _} = error -> {:reply, error, state}
         end
     end
   end
 
   @impl true
   def handle_call({:update_project, id, draft}, _from, state) do
-    with {:ok, path} <- ensure_path(id, state.root_path),
+    with {:ok, root} <- require_root_path(state),
+         {:ok, path} <- ensure_path(id, root),
          :ok <- Writer.write_draft(path, draft) do
       cache_put(id, path, draft, :update)
       {:reply, :ok, state}
@@ -100,6 +100,13 @@ defmodule CapcutMcp.CapCut.ProjectStore do
 
   @impl true
   def handle_call({:create_project, params}, _from, state) do
+    case require_root_path(state) do
+      {:ok, root} -> {:reply, do_create_project(root, params), state}
+      {:error, _} = err -> {:reply, err, state}
+    end
+  end
+
+  defp do_create_project(root, params) do
     id = generate_uuid()
     name = Map.get(params, "name", "New Project")
 
@@ -113,19 +120,50 @@ defmodule CapcutMcp.CapCut.ProjectStore do
       )
 
     draft_map = Draft.to_json(draft)
-    project_path = Path.join(state.root_path, sanitize_dir_name(name))
+    project_path = Path.join(root, sanitize_dir_name(name))
 
     with :ok <- File.mkdir_p(project_path),
          :ok <- Writer.write_draft(project_path, draft_map),
-         :ok <- update_root_meta(state.root_path, id, name, project_path) do
+         :ok <- update_root_meta(root, id, name, project_path) do
       cache_put(id, project_path, draft_map, :create)
-      {:reply, {:ok, id}, state}
-    else
-      error -> {:reply, error, state}
+      {:ok, id}
     end
   end
 
   # ── Private helpers ──────────────────────────────────────────────────────────
+
+  @spec resolve_root_path(keyword()) :: Path.t() | nil
+  defp resolve_root_path(opts) do
+    case Keyword.get(opts, :root_path) do
+      path when is_binary(path) ->
+        path
+
+      _ ->
+        case PathDiscovery.discover() do
+          {:ok, path} ->
+            path
+
+          {:error, reason} ->
+            Logger.warning(
+              "CapCut path not configured — tool calls will return an error " <>
+                "until CAPCUT_PATH is set or CapCut is installed. #{reason}"
+            )
+
+            nil
+        end
+    end
+  end
+
+  @spec require_root_path(%{root_path: Path.t() | nil}) ::
+          {:ok, Path.t()} | {:error, String.t()}
+  defp require_root_path(%{root_path: path}) when is_binary(path), do: {:ok, path}
+
+  defp require_root_path(%{root_path: nil}) do
+    case PathDiscovery.discover() do
+      {:ok, path} -> {:ok, path}
+      {:error, reason} -> {:error, "CapCut path not configured. #{reason}"}
+    end
+  end
 
   # The ETS table is created synchronously in `init/1`, so by the time any
   # caller reaches this function the table is guaranteed to exist — no
