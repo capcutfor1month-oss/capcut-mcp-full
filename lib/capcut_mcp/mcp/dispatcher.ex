@@ -99,6 +99,10 @@ defmodule CapcutMcp.MCP.Dispatcher do
         {Protocol.encode_error(id, -32_602, msg),
          %{tool: name, request_id: id, result: :error, reason: :missing_required}}
 
+      {:error, {:invalid_arguments, msg}} ->
+        {Protocol.encode_error(id, -32_602, msg),
+         %{tool: name, request_id: id, result: :error, reason: :invalid_arguments}}
+
       {:error, reason} ->
         {Protocol.encode_error(id, -32_602, to_string(reason)),
          %{tool: name, request_id: id, result: :error, reason: reason}}
@@ -120,6 +124,10 @@ defmodule CapcutMcp.MCP.Dispatcher do
   end
 
   @doc false
+  def validate_required(_definition, args) when not is_map(args) do
+    {:error, {:invalid_arguments, "arguments must be an object, got #{inspect(args, limit: 20)}"}}
+  end
+
   def validate_required(%{"inputSchema" => %{"required" => required}}, args)
       when is_list(required) and is_map(args) do
     case Enum.reject(required, &Map.has_key?(args, &1)) do

@@ -15,12 +15,14 @@ defmodule CapcutMcp.CapCut.ReaderTest do
 
   @tag :tmp_dir
   test "list_projects returns ProjectMeta list", %{tmp_dir: tmp} do
+    draft_path = Path.join(tmp, "some_project")
+
     meta = %{
       "all_draft_store" => [
         %{
           "draft_id" => "abc-123",
           "draft_name" => "My Video",
-          "draft_fold_path" => "/some/path",
+          "draft_fold_path" => draft_path,
           "tm_draft_modified" => 1_000_000_000_000_000,
           "tm_duration" => 5_000_000
         }
@@ -35,10 +37,11 @@ defmodule CapcutMcp.CapCut.ReaderTest do
     assert %ProjectMeta{
              id: "abc-123",
              name: "My Video",
-             path: "/some/path",
              modified_at: 1_000_000_000_000_000,
              duration_ms: 5000
            } = project
+
+    assert project.path == draft_path
   end
 
   @tag :tmp_dir
@@ -128,6 +131,113 @@ defmodule CapcutMcp.CapCut.ReaderTest do
 
       refute_receive {[:capcut_mcp, :draft, :schema_version], _, _}, 50
     end
+  end
+
+  # ── D16-F3/F4: corrupted meta, path escapes, non-integer timestamps ────────
+
+  describe "list_projects hardening" do
+    @tag :tmp_dir
+    test "filters draft_fold_path entries outside of root_path and emits telemetry",
+         %{tmp_dir: tmp} do
+      inside = Path.join(tmp, "legit_project")
+
+      meta = %{
+        "all_draft_store" => [
+          %{
+            "draft_id" => "legit",
+            "draft_name" => "Legit",
+            "draft_fold_path" => inside,
+            "tm_draft_modified" => 1_000_000_000_000_000,
+            "tm_duration" => 0
+          },
+          %{
+            "draft_id" => "escape",
+            "draft_name" => "Escape",
+            "draft_fold_path" => "/absolute/outside/escape",
+            "tm_draft_modified" => 1_000_000_000_000_000,
+            "tm_duration" => 0
+          }
+        ],
+        "draft_ids" => 2,
+        "root_path" => tmp
+      }
+
+      File.write!(Path.join(tmp, "root_meta_info.json"), Jason.encode!(meta))
+
+      attach_meta_rejected_event()
+
+      log =
+        capture_log(fn ->
+          assert {:ok, [legit]} = Reader.list_projects(tmp)
+          assert legit.id == "legit"
+        end)
+
+      assert log =~ "outside of CAPCUT_PATH"
+
+      assert_receive {[:capcut_mcp, :meta, :rejected], %{count: 1},
+                      %{reason: :path_outside_root, path: "/absolute/outside/escape"}}
+    end
+
+    @tag :tmp_dir
+    test "list_projects does not raise on non-integer tm_draft_modified or tm_duration",
+         %{tmp_dir: tmp} do
+      inside = Path.join(tmp, "weird_project")
+
+      meta = %{
+        "all_draft_store" => [
+          %{
+            "draft_id" => "weird",
+            "draft_name" => "Weird",
+            "draft_fold_path" => inside,
+            "tm_draft_modified" => "not-a-number",
+            "tm_duration" => 3.14
+          }
+        ],
+        "draft_ids" => 1,
+        "root_path" => tmp
+      }
+
+      File.write!(Path.join(tmp, "root_meta_info.json"), Jason.encode!(meta))
+
+      assert {:ok, [p]} = Reader.list_projects(tmp)
+      assert p.id == "weird"
+      assert p.modified_at == nil
+      assert is_integer(p.duration_ms)
+    end
+
+    @tag :tmp_dir
+    test "list_projects skips malformed store entries (non-string keys)", %{tmp_dir: tmp} do
+      meta = %{
+        "all_draft_store" => [
+          %{"draft_id" => "ok", "draft_name" => "OK", "draft_fold_path" => Path.join(tmp, "ok")},
+          %{"draft_id" => nil, "draft_name" => "bad", "draft_fold_path" => nil},
+          "scalar-not-a-map"
+        ],
+        "draft_ids" => 3,
+        "root_path" => tmp
+      }
+
+      File.write!(Path.join(tmp, "root_meta_info.json"), Jason.encode!(meta))
+      assert {:ok, [p]} = Reader.list_projects(tmp)
+      assert p.id == "ok"
+    end
+  end
+
+  defp attach_meta_rejected_event do
+    handler_id = {:meta_rejected, make_ref()}
+    test_pid = self()
+
+    :ok =
+      :telemetry.attach(
+        handler_id,
+        [:capcut_mcp, :meta, :rejected],
+        fn event, measurements, metadata, _ ->
+          send(test_pid, {event, measurements, metadata})
+        end,
+        nil
+      )
+
+    on_exit(fn -> :telemetry.detach(handler_id) end)
   end
 
   defp write_draft(tmp, overrides) do

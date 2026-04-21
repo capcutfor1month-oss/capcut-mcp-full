@@ -10,11 +10,22 @@ defmodule CapcutMcp.CapCut.Reader do
       * **measurements**: `%{count: 1}`
       * **metadata**: `%{version: String.t() | nil, supported: boolean()}`
 
-  The event fires for both supported and unsupported versions so attached
-  handlers can build an audit trail of which CapCut schema versions show up in
-  the wild. Unsupported or missing versions are additionally logged at
-  `:warning` level — the server continues to read the draft and return it to
-  the caller.
+  `list_projects/1` additionally emits:
+
+    * `[:capcut_mcp, :meta, :rejected]`
+      * **measurements**: `%{count: 1}`
+      * **metadata**: `%{reason: :path_outside_root, path: String.t()}`
+
+  The schema event fires for both supported and unsupported versions so
+  attached handlers can build an audit trail of which CapCut schema versions
+  show up in the wild. Unsupported or missing versions are additionally logged
+  at `:warning` level — the server continues to read the draft and return it
+  to the caller.
+
+  The `meta/rejected` event fires once per skipped `root_meta_info.json` entry
+  whose `draft_fold_path` resolves outside the configured root. This guards
+  against a corrupt or malicious meta file causing the server to read or
+  write arbitrary paths on disk.
   """
 
   require Logger
@@ -30,27 +41,59 @@ defmodule CapcutMcp.CapCut.Reader do
 
     with {:ok, content} <- File.read(meta_file),
          {:ok, data} <- Jason.decode(content) do
+      expanded_root = Path.expand(root_path)
+
       projects =
         data
         |> Map.get("all_draft_store", [])
-        |> Enum.flat_map(fn
-          %{"draft_id" => id, "draft_name" => name, "draft_fold_path" => path} = draft ->
-            [
-              %ProjectMeta{
-                id: id,
-                name: name,
-                path: path,
-                modified_at: draft["tm_draft_modified"],
-                duration_ms: parse_duration(draft["tm_duration"])
-              }
-            ]
-
-          _incomplete ->
-            []
-        end)
+        |> Enum.flat_map(&decode_entry(&1, expanded_root))
 
       {:ok, projects}
     end
+  end
+
+  defp decode_entry(
+         %{"draft_id" => id, "draft_name" => name, "draft_fold_path" => path} = draft,
+         expanded_root
+       )
+       when is_binary(id) and is_binary(name) and is_binary(path) do
+    if path_under_root?(path, expanded_root) do
+      [
+        %ProjectMeta{
+          id: id,
+          name: name,
+          path: path,
+          modified_at: parse_ts(draft["tm_draft_modified"]),
+          duration_ms: parse_duration(draft["tm_duration"])
+        }
+      ]
+    else
+      emit_rejected(path)
+      []
+    end
+  end
+
+  defp decode_entry(_incomplete, _expanded_root), do: []
+
+  defp path_under_root?(path, expanded_root) do
+    expanded = Path.expand(path)
+
+    expanded == expanded_root or
+      String.starts_with?(expanded, expanded_root <> "/") or
+      String.starts_with?(expanded, expanded_root <> "\\")
+  end
+
+  defp emit_rejected(path) do
+    Logger.warning(
+      "root_meta_info.json references draft_fold_path outside of CAPCUT_PATH — " <>
+        "ignoring: #{inspect(path)}"
+    )
+
+    :telemetry.execute(
+      [:capcut_mcp, :meta, :rejected],
+      %{count: 1},
+      %{reason: :path_outside_root, path: path}
+    )
   end
 
   @doc """
@@ -101,4 +144,7 @@ defmodule CapcutMcp.CapCut.Reader do
   defp parse_duration(nil), do: 0
   defp parse_duration(duration) when is_number(duration), do: duration |> trunc() |> div(1000)
   defp parse_duration(_), do: 0
+
+  defp parse_ts(ts) when is_integer(ts) and ts >= 0, do: ts
+  defp parse_ts(_), do: nil
 end

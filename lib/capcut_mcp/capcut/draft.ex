@@ -74,34 +74,61 @@ defmodule CapcutMcp.CapCut.Draft do
   @doc """
   Builds a fresh empty draft.
 
+  Returns `{:error, msg}` for non-numeric `:fps`, non-integer `:width`/`:height`,
+  and non-binary `:name` so the create_project boundary surfaces bad client
+  input as a JSON-RPC error instead of crashing the store GenServer.
+
   ## Examples
 
-      iex> d = CapcutMcp.CapCut.Draft.new(id: "abc", name: "My Clip", width: 1080, height: 1920, fps: 60)
+      iex> {:ok, d} = CapcutMcp.CapCut.Draft.new(id: "abc", name: "My Clip", width: 1080, height: 1920, fps: 60)
       iex> d.canvas_config["width"]
       1080
       iex> d.fps
       60.0
+
+      iex> CapcutMcp.CapCut.Draft.new(id: "abc", name: "My Clip", fps: "30")
+      {:error, "fps: Expected number, got \\"30\\""}
   """
-  @spec new(keyword()) :: t()
+  @spec new(keyword()) :: {:ok, t()} | {:error, String.t()}
   def new(opts) do
     id = Keyword.fetch!(opts, :id)
     name = Keyword.fetch!(opts, :name)
     width = Keyword.get(opts, :width, 1920)
     height = Keyword.get(opts, :height, 1080)
-    fps = opts |> Keyword.get(:fps, 30.0) |> to_float()
+    fps_input = Keyword.get(opts, :fps, 30.0)
 
-    %Draft{
-      id: id,
-      name: name,
-      canvas_config: %{
-        "width" => width,
-        "height" => height,
-        "ratio" => "original",
-        "background" => nil
-      },
-      fps: fps
-    }
+    with :ok <- check_binary(:name, name),
+         :ok <- check_integer(:width, width),
+         :ok <- check_integer(:height, height),
+         {:ok, fps} <- coerce_fps(fps_input) do
+      {:ok,
+       %Draft{
+         id: id,
+         name: name,
+         canvas_config: %{
+           "width" => width,
+           "height" => height,
+           "ratio" => "original",
+           "background" => nil
+         },
+         fps: fps
+       }}
+    end
   end
+
+  defp check_binary(_, value) when is_binary(value), do: :ok
+
+  defp check_binary(field, value),
+    do: {:error, "#{field}: expected string, got #{inspect(value)}"}
+
+  defp check_integer(_, value) when is_integer(value), do: :ok
+
+  defp check_integer(field, value),
+    do: {:error, "#{field}: expected integer, got #{inspect(value)}"}
+
+  defp coerce_fps(v) when is_integer(v), do: {:ok, v * 1.0}
+  defp coerce_fps(v) when is_float(v), do: {:ok, v}
+  defp coerce_fps(v), do: {:error, "fps: Expected number, got #{inspect(v)}"}
 
   @doc "Serializes a `%Draft{}` into the string-keyed map shape CapCut expects on disk."
   @spec to_json(t()) :: map()
@@ -122,9 +149,6 @@ defmodule CapcutMcp.CapCut.Draft do
       "update_time" => d.update_time
     }
   end
-
-  defp to_float(v) when is_integer(v), do: v * 1.0
-  defp to_float(v) when is_float(v), do: v
 
   defimpl Jason.Encoder do
     def encode(draft, opts), do: Jason.Encode.map(@for.to_json(draft), opts)

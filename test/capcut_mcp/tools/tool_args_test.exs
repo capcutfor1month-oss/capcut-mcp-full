@@ -29,6 +29,37 @@ defmodule CapcutMcp.Tools.ToolArgsTest do
     end
   end
 
+  describe "to_float_safe/1" do
+    test "widens integers" do
+      assert ToolArgs.to_float_safe(3) == {:ok, 3.0}
+      assert ToolArgs.to_float_safe(0) == {:ok, 0.0}
+      assert ToolArgs.to_float_safe(-7) == {:ok, -7.0}
+    end
+
+    test "passes floats through" do
+      assert ToolArgs.to_float_safe(0.25) == {:ok, 0.25}
+      assert ToolArgs.to_float_safe(-1.5) == {:ok, -1.5}
+    end
+
+    test "rejects strings with a helpful message" do
+      assert {:error, msg} = ToolArgs.to_float_safe("0.8")
+      assert msg =~ "Expected number"
+      assert msg =~ ~s("0.8")
+    end
+
+    test "rejects nil" do
+      assert {:error, msg} = ToolArgs.to_float_safe(nil)
+      assert msg =~ "Expected number"
+      assert msg =~ "nil"
+    end
+
+    test "rejects atoms, maps and lists without raising" do
+      assert {:error, _} = ToolArgs.to_float_safe(:atomic)
+      assert {:error, _} = ToolArgs.to_float_safe(%{"a" => 1})
+      assert {:error, _} = ToolArgs.to_float_safe([1, 2])
+    end
+  end
+
   describe "missing_required_message/2" do
     test "lists missing keys when some are absent" do
       msg = ToolArgs.missing_required_message(%{"present" => 1}, ["present", "gone", "also_gone"])

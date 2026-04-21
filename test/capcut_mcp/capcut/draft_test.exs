@@ -12,7 +12,7 @@ defmodule CapcutMcp.CapCut.DraftTest do
 
   describe "new/1" do
     test "applies defaults when only :id and :name are given" do
-      draft = Draft.new(id: "D-1", name: "Example")
+      assert {:ok, draft} = Draft.new(id: "D-1", name: "Example")
 
       assert draft.id == "D-1"
       assert draft.name == "Example"
@@ -28,15 +28,15 @@ defmodule CapcutMcp.CapCut.DraftTest do
     end
 
     test "coerces integer :fps to float" do
-      assert %Draft{fps: 60.0} = Draft.new(id: "x", name: "y", fps: 60)
+      assert {:ok, %Draft{fps: 60.0}} = Draft.new(id: "x", name: "y", fps: 60)
     end
 
     test "accepts explicit float :fps" do
-      assert %Draft{fps: 23.976} = Draft.new(id: "x", name: "y", fps: 23.976)
+      assert {:ok, %Draft{fps: 23.976}} = Draft.new(id: "x", name: "y", fps: 23.976)
     end
 
     test "honours custom canvas dimensions" do
-      draft = Draft.new(id: "x", name: "y", width: 1080, height: 1920)
+      assert {:ok, draft} = Draft.new(id: "x", name: "y", width: 1080, height: 1920)
       assert draft.canvas_config["width"] == 1080
       assert draft.canvas_config["height"] == 1920
     end
@@ -48,11 +48,30 @@ defmodule CapcutMcp.CapCut.DraftTest do
     test "raises KeyError when :name is missing" do
       assert_raise KeyError, fn -> Draft.new(id: "nope") end
     end
+
+    test "rejects non-numeric :fps with a helpful message" do
+      assert {:error, msg} = Draft.new(id: "x", name: "y", fps: "30")
+      assert msg =~ "fps"
+      assert msg =~ "Expected number"
+      assert msg =~ ~s("30")
+    end
+
+    test "rejects non-integer :width" do
+      assert {:error, msg} = Draft.new(id: "x", name: "y", width: "1080")
+      assert msg =~ "width"
+      assert msg =~ "expected integer"
+    end
+
+    test "rejects non-binary :name" do
+      assert {:error, msg} = Draft.new(id: "x", name: :atomic)
+      assert msg =~ "name"
+      assert msg =~ "expected string"
+    end
   end
 
   describe "to_json/1" do
     test "produces string-keyed map with every persisted field" do
-      draft = Draft.new(id: "abc", name: "Roundtrip")
+      {:ok, draft} = Draft.new(id: "abc", name: "Roundtrip")
       json = Draft.to_json(draft)
 
       expected_keys =
@@ -65,7 +84,7 @@ defmodule CapcutMcp.CapCut.DraftTest do
     end
 
     test "materials map exposes the eight canonical buckets" do
-      draft = Draft.new(id: "abc", name: "Buckets")
+      {:ok, draft} = Draft.new(id: "abc", name: "Buckets")
       %{"materials" => materials} = Draft.to_json(draft)
 
       for bucket <- ~w(videos audios texts images effects transitions stickers filters) do
@@ -77,7 +96,8 @@ defmodule CapcutMcp.CapCut.DraftTest do
 
   describe "Jason.Encoder" do
     test "encoding a %Draft{} and decoding back yields a map equal to to_json/1" do
-      draft = Draft.new(id: "rt-1", name: "Full Roundtrip", width: 1080, height: 1920, fps: 60)
+      {:ok, draft} =
+        Draft.new(id: "rt-1", name: "Full Roundtrip", width: 1080, height: 1920, fps: 60)
 
       encoded = Jason.encode!(draft)
       assert is_binary(encoded)
@@ -87,7 +107,7 @@ defmodule CapcutMcp.CapCut.DraftTest do
     end
 
     test "encoded JSON has string keys only (no atom leakage)" do
-      draft = Draft.new(id: "k", name: "Keys")
+      {:ok, draft} = Draft.new(id: "k", name: "Keys")
       decoded = draft |> Jason.encode!() |> Jason.decode!()
 
       assert Enum.all?(Map.keys(decoded), &is_binary/1)

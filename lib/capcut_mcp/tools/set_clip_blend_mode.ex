@@ -40,9 +40,8 @@ defmodule CapcutMcp.Tools.SetClipBlendMode do
 
   @impl true
   def execute(%{"project_id" => id, "clip_id" => clip_id, "mode" => mode} = args) do
-    value = ToolArgs.to_float(Map.get(args, "value", 1.0))
-
-    with {:ok, blend_mode} <- BlendModes.find_mode(mode) do
+    with {:ok, value} <- ToolArgs.to_float_safe(Map.get(args, "value", 1.0)),
+         {:ok, blend_mode} <- BlendModes.find_mode(mode) do
       SegmentMutation.run_draft(id, &apply_blend_mode(&1, clip_id, blend_mode, value),
         success:
           "Blend mode '#{blend_mode.label}' (#{blend_mode.name_id}) set on segment #{clip_id} with intensity #{value}."

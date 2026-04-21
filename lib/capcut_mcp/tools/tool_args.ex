@@ -52,4 +52,32 @@ defmodule CapcutMcp.Tools.ToolArgs do
   @spec to_float(number()) :: float()
   def to_float(v) when is_integer(v), do: v * 1.0
   def to_float(v) when is_float(v), do: v
+
+  @doc """
+  Request-boundary variant of `to_float/1`: rejects non-numeric inputs with a
+  human-readable error instead of raising `FunctionClauseError`.
+
+  Used at the outermost tool boundary where JSON payloads can smuggle strings,
+  atoms, maps, or `nil` into numeric slots. Callers `with`-propagate the
+  `{:error, _}` into the normal tool-error path so the dispatcher can surface
+  it as JSON-RPC `-32602` instead of crashing the server.
+
+  ## Examples
+
+      iex> CapcutMcp.Tools.ToolArgs.to_float_safe(1)
+      {:ok, 1.0}
+
+      iex> CapcutMcp.Tools.ToolArgs.to_float_safe(0.5)
+      {:ok, 0.5}
+
+      iex> CapcutMcp.Tools.ToolArgs.to_float_safe("0.8")
+      {:error, "Expected number, got \\"0.8\\""}
+
+      iex> CapcutMcp.Tools.ToolArgs.to_float_safe(nil)
+      {:error, "Expected number, got nil"}
+  """
+  @spec to_float_safe(term()) :: {:ok, float()} | {:error, String.t()}
+  def to_float_safe(v) when is_integer(v), do: {:ok, v * 1.0}
+  def to_float_safe(v) when is_float(v), do: {:ok, v}
+  def to_float_safe(v), do: {:error, "Expected number, got #{inspect(v)}"}
 end

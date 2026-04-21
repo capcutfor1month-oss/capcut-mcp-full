@@ -36,6 +36,11 @@ defmodule CapcutMcp.Tools.ListProjects do
   defp format_ts(nil), do: "unknown"
 
   defp format_ts(us) when is_integer(us) do
-    us |> div(1_000_000) |> DateTime.from_unix!() |> DateTime.to_string()
+    case us |> div(1_000_000) |> DateTime.from_unix() do
+      {:ok, dt} -> DateTime.to_string(dt)
+      {:error, _} -> "unknown"
+    end
   end
+
+  defp format_ts(_), do: "unknown"
 end

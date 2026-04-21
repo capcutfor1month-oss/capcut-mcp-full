@@ -199,7 +199,7 @@ Every write to `draft_content.json` creates a `.bak` backup and uses an atomic r
 
 ## Observability
 
-Every `tools/call` goes through `:telemetry.span/3` in `CapcutMcp.MCP.Dispatcher`, so duration and outcome are exposed as structured events — no custom logging plumbing in individual tools. The two core subsystems (`ProjectStore` cache and `BlendModes` loader) emit their own events too, so a single telemetry handler can answer "which tool was slow, and was it cache-bound or disk-bound?".
+Every `tools/call` goes through `:telemetry.span/3` in `CapcutMcp.MCP.Dispatcher`, so duration and outcome are exposed as structured events — no custom logging plumbing in individual tools. The two core subsystems (`ProjectStore` cache and `BlendModes` loader) emit their own events too, and the boundary-hardening pass (Reader path-trust check) emits its own rejection event, so a single telemetry handler can answer "which tool was slow, was it cache-bound or disk-bound, and did any corrupt metadata get filtered on the way in?".
 
 Emitted events:
 
@@ -213,6 +213,7 @@ Emitted events:
 | `[:capcut_mcp, :cache, :write]`                    | `:count` (always `1`)               | `:id`, `:reason` (`:load` \| `:update` \| `:create`) |
 | `[:capcut_mcp, :blend_modes, :load]`               | `:duration`                         | `:result` (`:ok` \| `:error`), `:count?`, `:path?`, `:reason?` |
 | `[:capcut_mcp, :draft, :schema_version]`           | `:count` (always `1`)               | `:version` (`String.t()` \| `nil`), `:supported` (`boolean`) |
+| `[:capcut_mcp, :meta, :rejected]`                  | `:count` (always `1`)               | `:reason` (`:path_outside_root`), `:path` (`String.t()`) |
 
 A default log handler in `CapcutMcp.Telemetry` is attached on boot and prints one line per tool call, e.g.:
 
@@ -223,6 +224,8 @@ A default log handler in `CapcutMcp.Telemetry` is attached on boot and prints on
 `Logger.metadata` is populated early in the pipeline (`mcp_request_id`, `mcp_method`, `tool`, `request_id`), so every log line further down the stack — including inside individual tools — is filterable by request.
 
 `[:capcut_mcp, :draft, :schema_version]` fires on every successful `read_draft` and additionally triggers a `Logger.warning` when the draft's `new_version` field is missing or not in `CapcutMcp.CapCut.Reader.supported_versions/0` — the server still reads the draft, it just flags that the on-disk schema is untested.
+
+`[:capcut_mcp, :meta, :rejected]` fires when `list_projects` encounters a `root_meta_info.json` entry whose `draft_fold_path` resolves outside the configured `CAPCUT_PATH`. The entry is dropped from the response (so tool callers can't be tricked into reading or writing arbitrary files through a corrupt/malicious meta file), and a `Logger.warning` is emitted alongside the telemetry event.
 
 The cache and blend-modes events are emitted but *not* logged by default (they're chatty on hit paths). Attach your own handler if you want a running hit-rate or a disk-load audit trail:
 
@@ -282,6 +285,6 @@ iex -S mix run --no-halt
 - **:telemetry** -- structured events for every tool call
 - **Credo** (`--strict`) -- zero issues
 - **Dialyzer** (`:underspecs`, `:error_handling`, `:unknown`) -- zero warnings
-- **ExUnit** -- 140 tests + 11 `stream_data` property tests + 2 doctests (incl. JSON-RPC integration tests with telemetry assertions on tools + cache + blend-modes + schema-version events, path-discovery fallbacks, and timeline-mutation invariants like `update_segment` roundtrip, `ensure_timerange` idempotency and `insert_segment` count preservation)
-- **StreamData** -- property-based tests for `TimelineHelper` (UUID format, segment roundtrip, track insertion invariants, `validate_timing` domain)
-- **ExCoveralls** -- ~85% line coverage on application code (remaining gaps are the stdin-loop I/O layer and a few lazy disk helpers)
+- **ExUnit** -- 164 tests + 12 `stream_data` property tests + 6 doctests (incl. JSON-RPC integration tests with telemetry assertions on tools + cache + blend-modes + schema-version + meta-rejected events, path-discovery fallbacks, a boundary fuzz test that hammers every registered tool with random `StreamData.term()` arguments, and timeline-mutation invariants like `update_segment` roundtrip, `ensure_timerange` idempotency and `insert_segment` count preservation)
+- **StreamData** -- property-based tests for `TimelineHelper` (UUID format, segment roundtrip, track insertion invariants, `validate_timing` domain) and for the `tools/call` request boundary (no random payload may crash the dispatcher)
+- **ExCoveralls** -- ~88% line coverage on application code (remaining gaps are the stdin-loop I/O layer and a few lazy disk helpers)

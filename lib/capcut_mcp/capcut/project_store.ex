@@ -110,23 +110,23 @@ defmodule CapcutMcp.CapCut.ProjectStore do
     id = generate_uuid()
     name = Map.get(params, "name", "New Project")
 
-    draft =
-      Draft.new(
-        id: id,
-        name: name,
-        width: Map.get(params, "width", 1920),
-        height: Map.get(params, "height", 1080),
-        fps: Map.get(params, "fps", 30.0)
-      )
+    with {:ok, draft} <-
+           Draft.new(
+             id: id,
+             name: name,
+             width: Map.get(params, "width", 1920),
+             height: Map.get(params, "height", 1080),
+             fps: Map.get(params, "fps", 30.0)
+           ) do
+      draft_map = Draft.to_json(draft)
+      project_path = Path.join(root, sanitize_dir_name(name))
 
-    draft_map = Draft.to_json(draft)
-    project_path = Path.join(root, sanitize_dir_name(name))
-
-    with :ok <- File.mkdir_p(project_path),
-         :ok <- Writer.write_draft(project_path, draft_map),
-         :ok <- update_root_meta(root, id, name, project_path) do
-      cache_put(id, project_path, draft_map, :create)
-      {:ok, id}
+      with :ok <- File.mkdir_p(project_path),
+           :ok <- Writer.write_draft(project_path, draft_map),
+           :ok <- update_root_meta(root, id, name, project_path) do
+        cache_put(id, project_path, draft_map, :create)
+        {:ok, id}
+      end
     end
   end
 

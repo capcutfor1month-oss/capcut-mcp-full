@@ -263,6 +263,20 @@ defmodule CapcutMcp.Tools.SetClipBlendModeTest do
                  "mode" => "soft_light"
                })
     end
+
+    @tag :tmp_dir
+    test "stringified value returns an error instead of raising", %{project_id: id} do
+      assert {:error, msg} =
+               SetClipBlendMode.execute(%{
+                 "project_id" => id,
+                 "clip_id" => "video-seg-001",
+                 "mode" => "soft_light",
+                 "value" => "0.8"
+               })
+
+      assert msg =~ "Expected number"
+      assert msg =~ ~s("0.8")
+    end
   end
 
   # ── Helpers ────────────────────────────────────────────────────────────────

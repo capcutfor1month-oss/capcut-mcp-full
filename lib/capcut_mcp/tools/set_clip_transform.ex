@@ -46,36 +46,59 @@ defmodule CapcutMcp.Tools.SetClipTransform do
 
   @impl true
   def execute(%{"project_id" => id, "clip_id" => clip_id} = args) do
-    SegmentMutation.run(id, clip_id, &apply_transform(&1, args),
-      success: "Transform updated on segment #{clip_id}.",
-      require_clip: true,
-      clip_error:
-        "Cannot set transform: segment has no clip object (audio segments are not supported)"
-    )
+    with {:ok, coerced} <- coerce_numeric_fields(args) do
+      SegmentMutation.run(id, clip_id, &apply_transform(&1, coerced),
+        success: "Transform updated on segment #{clip_id}.",
+        require_clip: true,
+        clip_error:
+          "Cannot set transform: segment has no clip object (audio segments are not supported)"
+      )
+    end
   end
 
   def execute(args),
     do: {:error, ToolArgs.missing_required_message(args, ["project_id", "clip_id"])}
 
-  defp apply_transform(seg, args) do
+  # Validates numeric inputs at the request boundary. Non-number values
+  # (e.g. stringified "0.5" from a sloppy client) short-circuit to
+  # `{:error, msg}` instead of raising inside `ToolArgs.to_float/1`.
+  defp coerce_numeric_fields(args) do
+    Enum.reduce_while(~w(x y scale_x scale_y rotation), {:ok, %{}}, &coerce_field(args, &1, &2))
+  end
+
+  defp coerce_field(args, key, {:ok, acc}) do
+    case Map.get(args, key) do
+      nil -> {:cont, {:ok, acc}}
+      value -> coerce_value(key, value, acc)
+    end
+  end
+
+  defp coerce_value(key, value, acc) do
+    case ToolArgs.to_float_safe(value) do
+      {:ok, float} -> {:cont, {:ok, Map.put(acc, key, float)}}
+      {:error, msg} -> {:halt, {:error, "#{key}: #{msg}"}}
+    end
+  end
+
+  defp apply_transform(seg, coerced) do
     clip =
       seg["clip"]
-      |> maybe_update_nested("transform", "x", args["x"])
-      |> maybe_update_nested("transform", "y", args["y"])
-      |> maybe_update_nested("scale", "x", args["scale_x"])
-      |> maybe_update_nested("scale", "y", args["scale_y"])
-      |> maybe_update("rotation", args["rotation"])
+      |> maybe_update_nested("transform", "x", Map.get(coerced, "x"))
+      |> maybe_update_nested("transform", "y", Map.get(coerced, "y"))
+      |> maybe_update_nested("scale", "x", Map.get(coerced, "scale_x"))
+      |> maybe_update_nested("scale", "y", Map.get(coerced, "scale_y"))
+      |> maybe_update("rotation", Map.get(coerced, "rotation"))
 
     Map.put(seg, "clip", clip)
   end
 
   defp maybe_update(map, _key, nil), do: map
-  defp maybe_update(map, key, value), do: Map.put(map, key, ToolArgs.to_float(value))
+  defp maybe_update(map, key, value), do: Map.put(map, key, value)
 
   defp maybe_update_nested(map, _group, _key, nil), do: map
 
   defp maybe_update_nested(map, group, key, value) do
     nested = Map.get(map, group, %{})
-    Map.put(map, group, Map.put(nested, key, ToolArgs.to_float(value)))
+    Map.put(map, group, Map.put(nested, key, value))
   end
 end
