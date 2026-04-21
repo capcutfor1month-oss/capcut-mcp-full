@@ -7,6 +7,18 @@ defmodule CapcutMcp.CapCut.ProjectStore do
   and cache consistency stay intact. The ETS table is `:protected` and owned by
   this process, so only the server can mutate it; the outside world can only
   read.
+
+  ## Telemetry
+
+  Every cache operation emits one of:
+
+    * `[:capcut_mcp, :cache, :hit]`  — metadata: `%{id: String.t()}`
+    * `[:capcut_mcp, :cache, :miss]` — metadata: `%{id: String.t()}`
+    * `[:capcut_mcp, :cache, :write]` — metadata:
+      `%{id: String.t(), reason: :load | :update | :create}`
+
+  Measurements are always `%{count: 1}` — attach a counter handler to derive
+  the cache hit-rate.
   """
 
   use GenServer
@@ -66,7 +78,7 @@ defmodule CapcutMcp.CapCut.ProjectStore do
       :miss ->
         case load_project(id, state.root_path) do
           {:ok, {path, draft}} ->
-            cache_put(id, path, draft)
+            cache_put(id, path, draft, :load)
             {:reply, {:ok, draft}, state}
 
           error ->
@@ -79,7 +91,7 @@ defmodule CapcutMcp.CapCut.ProjectStore do
   def handle_call({:update_project, id, draft}, _from, state) do
     with {:ok, path} <- ensure_path(id, state.root_path),
          :ok <- Writer.write_draft(path, draft) do
-      cache_put(id, path, draft)
+      cache_put(id, path, draft, :update)
       {:reply, :ok, state}
     else
       {:error, _} = error -> {:reply, error, state}
@@ -106,7 +118,7 @@ defmodule CapcutMcp.CapCut.ProjectStore do
     with :ok <- File.mkdir_p(project_path),
          :ok <- Writer.write_draft(project_path, draft_map),
          :ok <- update_root_meta(state.root_path, id, name, project_path) do
-      cache_put(id, project_path, draft_map)
+      cache_put(id, project_path, draft_map, :create)
       {:reply, {:ok, id}, state}
     else
       error -> {:reply, error, state}
@@ -123,12 +135,25 @@ defmodule CapcutMcp.CapCut.ProjectStore do
   @spec cache_lookup(String.t()) :: {:ok, Path.t(), map()} | :miss
   defp cache_lookup(id) do
     case :ets.lookup(@table, id) do
-      [{^id, path, draft}] -> {:ok, path, draft}
-      [] -> :miss
+      [{^id, path, draft}] ->
+        emit_cache_event(:hit, %{id: id})
+        {:ok, path, draft}
+
+      [] ->
+        emit_cache_event(:miss, %{id: id})
+        :miss
     end
   end
 
-  defp cache_put(id, path, draft), do: :ets.insert(@table, {id, path, draft})
+  @spec cache_put(String.t(), Path.t(), map(), :load | :update | :create) :: true
+  defp cache_put(id, path, draft, reason) do
+    emit_cache_event(:write, %{id: id, reason: reason})
+    :ets.insert(@table, {id, path, draft})
+  end
+
+  defp emit_cache_event(kind, metadata) do
+    :telemetry.execute([:capcut_mcp, :cache, kind], %{count: 1}, metadata)
+  end
 
   @spec ensure_path(String.t(), Path.t()) :: {:ok, Path.t()} | {:error, term()}
   defp ensure_path(id, root_path) do
@@ -138,7 +163,7 @@ defmodule CapcutMcp.CapCut.ProjectStore do
 
       :miss ->
         with {:ok, {path, draft}} <- load_project(id, root_path) do
-          cache_put(id, path, draft)
+          cache_put(id, path, draft, :load)
           {:ok, path}
         end
     end

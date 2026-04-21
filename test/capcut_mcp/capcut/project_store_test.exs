@@ -91,4 +91,61 @@ defmodule CapcutMcp.CapCut.ProjectStoreTest do
     ids = Enum.map(projects, & &1.id)
     assert new_id in ids
   end
+
+  # ── Telemetry cases (D1b) ──────────────────────────────────────────────────
+
+  @cache_events [
+    [:capcut_mcp, :cache, :hit],
+    [:capcut_mcp, :cache, :miss],
+    [:capcut_mcp, :cache, :write]
+  ]
+
+  @tag :tmp_dir
+  test "get_project emits miss + write on first call, hit on second", %{project_id: id} do
+    attach_cache_events()
+
+    assert {:ok, _} = ProjectStore.get_project(id)
+
+    assert_receive {[:capcut_mcp, :cache, :miss], %{count: 1}, %{id: ^id}}
+    assert_receive {[:capcut_mcp, :cache, :write], %{count: 1}, %{id: ^id, reason: :load}}
+
+    assert {:ok, _} = ProjectStore.get_project(id)
+    assert_receive {[:capcut_mcp, :cache, :hit], %{count: 1}, %{id: ^id}}
+  end
+
+  @tag :tmp_dir
+  test "update_project emits a :write event with reason :update", %{project_id: id} do
+    {:ok, draft} = ProjectStore.get_project(id)
+    attach_cache_events()
+
+    :ok = ProjectStore.update_project(id, Map.put(draft, "name", "Updated"))
+
+    assert_receive {[:capcut_mcp, :cache, :write], %{count: 1}, %{id: ^id, reason: :update}}
+  end
+
+  @tag :tmp_dir
+  test "create_project emits a :write event with reason :create" do
+    attach_cache_events()
+
+    {:ok, new_id} = ProjectStore.create_project(%{"name" => "Telemetry Project"})
+
+    assert_receive {[:capcut_mcp, :cache, :write], %{count: 1}, %{id: ^new_id, reason: :create}}
+  end
+
+  defp attach_cache_events do
+    handler_id = {:cache_events, make_ref()}
+    test_pid = self()
+
+    :ok =
+      :telemetry.attach_many(
+        handler_id,
+        @cache_events,
+        fn event, measurements, metadata, _ ->
+          send(test_pid, {event, measurements, metadata})
+        end,
+        nil
+      )
+
+    on_exit(fn -> :telemetry.detach(handler_id) end)
+  end
 end

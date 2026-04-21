@@ -195,7 +195,7 @@ Every write to `draft_content.json` creates a `.bak` backup and uses an atomic r
 
 ## Observability
 
-Every `tools/call` goes through `:telemetry.span/3` in `CapcutMcp.MCP.Dispatcher`, so duration and outcome are exposed as structured events — no custom logging plumbing in individual tools.
+Every `tools/call` goes through `:telemetry.span/3` in `CapcutMcp.MCP.Dispatcher`, so duration and outcome are exposed as structured events — no custom logging plumbing in individual tools. The two core subsystems (`ProjectStore` cache and `BlendModes` loader) emit their own events too, so a single telemetry handler can answer "which tool was slow, and was it cache-bound or disk-bound?".
 
 Emitted events:
 
@@ -204,8 +204,12 @@ Emitted events:
 | `[:capcut_mcp, :tool, :execute, :start]`           | `:system_time`, `:monotonic_time`   | `:tool`, `:request_id`                 |
 | `[:capcut_mcp, :tool, :execute, :stop]`            | `:duration`, `:monotonic_time`      | `:tool`, `:request_id`, `:result`, `:reason?` |
 | `[:capcut_mcp, :tool, :execute, :exception]`       | `:duration`, `:monotonic_time`      | `:tool`, `:request_id`, `:kind`, `:reason`, `:stacktrace` |
+| `[:capcut_mcp, :cache, :hit]`                      | `:count` (always `1`)               | `:id`                                  |
+| `[:capcut_mcp, :cache, :miss]`                     | `:count` (always `1`)               | `:id`                                  |
+| `[:capcut_mcp, :cache, :write]`                    | `:count` (always `1`)               | `:id`, `:reason` (`:load` \| `:update` \| `:create`) |
+| `[:capcut_mcp, :blend_modes, :load]`               | `:duration`                         | `:result` (`:ok` \| `:error`), `:count?`, `:path?`, `:reason?` |
 
-A default log handler in `CapcutMcp.Telemetry` is attached on boot and prints one line per call, e.g.:
+A default log handler in `CapcutMcp.Telemetry` is attached on boot and prints one line per tool call, e.g.:
 
 ```text
 12:34:56.789 [info] tool=add_text request_id=42 result=ok duration=8.24ms
@@ -213,7 +217,23 @@ A default log handler in `CapcutMcp.Telemetry` is attached on boot and prints on
 
 `Logger.metadata` is populated early in the pipeline (`mcp_request_id`, `mcp_method`, `tool`, `request_id`), so every log line further down the stack — including inside individual tools — is filterable by request.
 
-To pipe events into Prometheus, OpenTelemetry, Datadog, etc., attach your own handler; the tool code does not need to change.
+The cache and blend-modes events are emitted but *not* logged by default (they're chatty on hit paths). Attach your own handler if you want a running hit-rate or a disk-load audit trail:
+
+```elixir
+:telemetry.attach_many(
+  "my-cache-counter",
+  [
+    [:capcut_mcp, :cache, :hit],
+    [:capcut_mcp, :cache, :miss]
+  ],
+  fn [_, _, kind], _measurements, _metadata, _cfg ->
+    :counters.add(my_counter_ref, kind_to_idx(kind), 1)
+  end,
+  nil
+)
+```
+
+To pipe events into Prometheus, OpenTelemetry, Datadog, etc., attach your own handler; the application code does not need to change.
 
 ## Development
 
@@ -255,5 +275,5 @@ iex -S mix run --no-halt
 - **:telemetry** -- structured events for every tool call
 - **Credo** (`--strict`) -- zero issues
 - **Dialyzer** (`:underspecs`, `:error_handling`, `:unknown`) -- zero warnings
-- **ExUnit** -- 109 tests (incl. JSON-RPC integration tests with telemetry assertions, plus 2 doctests)
+- **ExUnit** -- 125 tests (incl. JSON-RPC integration tests with telemetry assertions on tools + cache + blend-modes events, plus 2 doctests)
 - **ExCoveralls** -- ~83% line coverage on application code (remaining gaps are the stdin-loop I/O layer and a few lazy disk helpers)

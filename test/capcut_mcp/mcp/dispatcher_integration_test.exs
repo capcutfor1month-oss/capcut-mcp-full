@@ -22,6 +22,12 @@ defmodule CapcutMcp.MCP.DispatcherIntegrationTest do
     [:capcut_mcp, :tool, :execute, :exception]
   ]
 
+  @cache_events [
+    [:capcut_mcp, :cache, :hit],
+    [:capcut_mcp, :cache, :miss],
+    [:capcut_mcp, :cache, :write]
+  ]
+
   setup %{tmp_dir: tmp} do
     project_id = "INT-TEST-001"
     project_path = Path.join(tmp, "integration_test_project")
@@ -208,6 +214,25 @@ defmodule CapcutMcp.MCP.DispatcherIntegrationTest do
     assert is_binary(reason) and reason =~ "not found"
   end
 
+  @tag :tmp_dir
+  test "two get_project calls emit miss+write then hit on the cache layer", %{project_id: id} do
+    attach_cache_events()
+
+    msg =
+      ~s({"jsonrpc":"2.0","id":10,"method":"tools/call",) <>
+        ~s("params":{"name":"get_project","arguments":{"project_id":") <>
+        id <> ~s("}}})
+
+    dispatch(msg)
+
+    assert_receive {[:capcut_mcp, :cache, :miss], _, %{id: ^id}}
+    assert_receive {[:capcut_mcp, :cache, :write], _, %{id: ^id, reason: :load}}
+
+    dispatch(msg)
+
+    assert_receive {[:capcut_mcp, :cache, :hit], _, %{id: ^id}}
+  end
+
   # ── Helpers ────────────────────────────────────────────────────────────────
 
   # Decodes a raw JSON-RPC string, runs it through the dispatcher, and
@@ -231,6 +256,23 @@ defmodule CapcutMcp.MCP.DispatcherIntegrationTest do
       :telemetry.attach_many(
         handler_id,
         @tool_execute_events,
+        fn event, measurements, metadata, _config ->
+          send(test_pid, {event, measurements, metadata})
+        end,
+        nil
+      )
+
+    on_exit(fn -> :telemetry.detach(handler_id) end)
+  end
+
+  defp attach_cache_events do
+    handler_id = {:cache_events, make_ref()}
+    test_pid = self()
+
+    :ok =
+      :telemetry.attach_many(
+        handler_id,
+        @cache_events,
         fn event, measurements, metadata, _config ->
           send(test_pid, {event, measurements, metadata})
         end,

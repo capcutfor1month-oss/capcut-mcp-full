@@ -6,6 +6,19 @@ defmodule CapcutMcp.CapCut.BlendModes do
   subsequent lookups. The table is owned by the application master (created in
   `CapcutMcp.Application.start/2` via `init_table/0`) so it outlives any
   individual caller process.
+
+  ## Telemetry
+
+  Every disk load (expected exactly once per application lifetime, guarded by
+  the ETS cache) emits:
+
+    * `[:capcut_mcp, :blend_modes, :load]`
+      * **measurements**: `:duration` (native time units)
+      * **metadata**: on success `%{result: :ok, count: integer(), path: String.t()}`,
+        on failure `%{result: :error, reason: term()}`
+
+  Useful for confirming the lazy-load path is actually lazy (should only ever
+  fire once in production).
   """
 
   @ets_table :capcut_blend_modes
@@ -90,12 +103,31 @@ defmodule CapcutMcp.CapCut.BlendModes do
 
   defp load_and_cache do
     init_table()
+    start = System.monotonic_time()
 
-    with {:ok, mix_mode_dir} <- find_mix_mode_dir(),
-         {:ok, modes} <- read_mix_mode_json(mix_mode_dir) do
-      :ets.insert(@ets_table, {:modes, modes})
-      {:ok, modes}
-    end
+    {result, metadata} =
+      case find_mix_mode_dir() do
+        {:ok, mix_mode_dir} ->
+          case read_mix_mode_json(mix_mode_dir) do
+            {:ok, modes} ->
+              :ets.insert(@ets_table, {:modes, modes})
+              {{:ok, modes}, %{result: :ok, count: length(modes), path: mix_mode_dir}}
+
+            {:error, reason} = err ->
+              {err, %{result: :error, reason: reason, path: mix_mode_dir}}
+          end
+
+        {:error, reason} = err ->
+          {err, %{result: :error, reason: reason}}
+      end
+
+    :telemetry.execute(
+      [:capcut_mcp, :blend_modes, :load],
+      %{duration: System.monotonic_time() - start},
+      metadata
+    )
+
+    result
   end
 
   defp find_mix_mode_dir do
