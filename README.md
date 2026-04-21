@@ -282,5 +282,6 @@ iex -S mix run --no-halt
 - **:telemetry** -- structured events for every tool call
 - **Credo** (`--strict`) -- zero issues
 - **Dialyzer** (`:underspecs`, `:error_handling`, `:unknown`) -- zero warnings
-- **ExUnit** -- 140 tests (incl. JSON-RPC integration tests with telemetry assertions on tools + cache + blend-modes + schema-version events, path-discovery fallbacks, plus 2 doctests)
-- **ExCoveralls** -- ~83% line coverage on application code (remaining gaps are the stdin-loop I/O layer and a few lazy disk helpers)
+- **ExUnit** -- 140 tests + 11 `stream_data` property tests + 2 doctests (incl. JSON-RPC integration tests with telemetry assertions on tools + cache + blend-modes + schema-version events, path-discovery fallbacks, and timeline-mutation invariants like `update_segment` roundtrip, `ensure_timerange` idempotency and `insert_segment` count preservation)
+- **StreamData** -- property-based tests for `TimelineHelper` (UUID format, segment roundtrip, track insertion invariants, `validate_timing` domain)
+- **ExCoveralls** -- ~85% line coverage on application code (remaining gaps are the stdin-loop I/O layer and a few lazy disk helpers)
