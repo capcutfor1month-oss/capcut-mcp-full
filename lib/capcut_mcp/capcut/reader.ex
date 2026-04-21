@@ -1,7 +1,27 @@
 defmodule CapcutMcp.CapCut.Reader do
-  @moduledoc "Reads CapCut project metadata and draft content from the local filesystem."
+  @moduledoc """
+  Reads CapCut project metadata and draft content from the local filesystem.
+
+  ## Telemetry
+
+  Every successful `read_draft/1` call emits:
+
+    * `[:capcut_mcp, :draft, :schema_version]`
+      * **measurements**: `%{count: 1}`
+      * **metadata**: `%{version: String.t() | nil, supported: boolean()}`
+
+  The event fires for both supported and unsupported versions so attached
+  handlers can build an audit trail of which CapCut schema versions show up in
+  the wild. Unsupported or missing versions are additionally logged at
+  `:warning` level — the server continues to read the draft and return it to
+  the caller.
+  """
+
+  require Logger
 
   alias CapcutMcp.CapCut.ProjectMeta
+
+  @supported_versions ~w(163.0.0 164.0.0)
 
   @doc "Reads all project metadata from root_meta_info.json"
   @spec list_projects(String.t()) :: {:ok, [ProjectMeta.t()]} | {:error, term()}
@@ -33,13 +53,49 @@ defmodule CapcutMcp.CapCut.Reader do
     end
   end
 
-  @doc "Reads draft_content.json for a given project folder path"
+  @doc """
+  Reads `draft_content.json` for a given project folder path.
+
+  On success the decoded draft map is returned and a
+  `[:capcut_mcp, :draft, :schema_version]` telemetry event is emitted. If the
+  draft's `new_version` field is missing or not in `supported_versions/0` a
+  warning is logged; the call still succeeds so the caller can attempt best-effort
+  reads against newer CapCut releases.
+  """
   @spec read_draft(String.t()) :: {:ok, map()} | {:error, term()}
   def read_draft(draft_path) do
     json_file = Path.join(draft_path, "draft_content.json")
 
     with {:ok, content} <- File.read(json_file),
-         do: Jason.decode(content)
+         {:ok, draft} <- Jason.decode(content) do
+      emit_schema_version(draft)
+      {:ok, draft}
+    end
+  end
+
+  @doc """
+  Returns the list of CapCut schema versions this server has been tested against.
+  """
+  @spec supported_versions() :: [String.t()]
+  def supported_versions, do: @supported_versions
+
+  defp emit_schema_version(draft) do
+    version = draft["new_version"]
+    supported = version in @supported_versions
+
+    if not supported do
+      Logger.warning(
+        "CapCut schema version #{inspect(version)} untested " <>
+          "(supported: #{Enum.join(@supported_versions, ", ")}). " <>
+          "Proceeding anyway; file a report if something looks off."
+      )
+    end
+
+    :telemetry.execute(
+      [:capcut_mcp, :draft, :schema_version],
+      %{count: 1},
+      %{version: version, supported: supported}
+    )
   end
 
   defp parse_duration(nil), do: 0

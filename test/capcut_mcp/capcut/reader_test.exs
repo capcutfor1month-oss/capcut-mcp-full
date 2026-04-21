@@ -1,5 +1,8 @@
 defmodule CapcutMcp.CapCut.ReaderTest do
-  use ExUnit.Case, async: true
+  use ExUnit.Case, async: false
+
+  import ExUnit.CaptureLog
+
   alias CapcutMcp.CapCut.ProjectMeta
   alias CapcutMcp.CapCut.Reader
 
@@ -45,7 +48,14 @@ defmodule CapcutMcp.CapCut.ReaderTest do
 
   @tag :tmp_dir
   test "read_draft returns parsed map", %{tmp_dir: tmp} do
-    draft = %{"id" => "test-id", "name" => "Test", "tracks" => [], "fps" => 30.0}
+    draft = %{
+      "id" => "test-id",
+      "name" => "Test",
+      "tracks" => [],
+      "fps" => 30.0,
+      "new_version" => "163.0.0"
+    }
+
     File.write!(Path.join(tmp, "draft_content.json"), Jason.encode!(draft))
     assert {:ok, %{"id" => "test-id", "name" => "Test"}} = Reader.read_draft(tmp)
   end
@@ -53,5 +63,97 @@ defmodule CapcutMcp.CapCut.ReaderTest do
   @tag :tmp_dir
   test "read_draft returns error when file missing", %{tmp_dir: tmp} do
     assert {:error, _} = Reader.read_draft(tmp)
+  end
+
+  # ── D14: Schema-Version Handling ───────────────────────────────────────────
+
+  describe "read_draft schema version" do
+    @tag :tmp_dir
+    test "emits :schema_version with supported: true on known version", %{tmp_dir: tmp} do
+      [supported | _] = Reader.supported_versions()
+      write_draft(tmp, %{"new_version" => supported})
+
+      attach_schema_version_event()
+
+      log =
+        capture_log(fn ->
+          assert {:ok, _} = Reader.read_draft(tmp)
+        end)
+
+      assert_receive {[:capcut_mcp, :draft, :schema_version], %{count: 1},
+                      %{version: ^supported, supported: true}}
+
+      refute log =~ "untested"
+    end
+
+    @tag :tmp_dir
+    test "emits :schema_version and warns on unknown version", %{tmp_dir: tmp} do
+      write_draft(tmp, %{"new_version" => "999.0.0"})
+
+      attach_schema_version_event()
+
+      log =
+        capture_log(fn ->
+          assert {:ok, _} = Reader.read_draft(tmp)
+        end)
+
+      assert_receive {[:capcut_mcp, :draft, :schema_version], %{count: 1},
+                      %{version: "999.0.0", supported: false}}
+
+      assert log =~ "CapCut schema version \"999.0.0\" untested"
+    end
+
+    @tag :tmp_dir
+    test "emits :schema_version and warns when new_version is missing", %{tmp_dir: tmp} do
+      write_draft(tmp, %{})
+
+      attach_schema_version_event()
+
+      log =
+        capture_log(fn ->
+          assert {:ok, _} = Reader.read_draft(tmp)
+        end)
+
+      assert_receive {[:capcut_mcp, :draft, :schema_version], %{count: 1},
+                      %{version: nil, supported: false}}
+
+      assert log =~ "CapCut schema version nil untested"
+    end
+
+    @tag :tmp_dir
+    test "does not emit :schema_version when file is missing", %{tmp_dir: tmp} do
+      attach_schema_version_event()
+
+      assert {:error, _} = Reader.read_draft(tmp)
+
+      refute_receive {[:capcut_mcp, :draft, :schema_version], _, _}, 50
+    end
+  end
+
+  defp write_draft(tmp, overrides) do
+    draft =
+      Map.merge(
+        %{"id" => "test-id", "name" => "Test", "tracks" => [], "fps" => 30.0},
+        overrides
+      )
+
+    File.write!(Path.join(tmp, "draft_content.json"), Jason.encode!(draft))
+  end
+
+  defp attach_schema_version_event do
+    handler_id = {:schema_version, make_ref()}
+    test_pid = self()
+
+    :ok =
+      :telemetry.attach(
+        handler_id,
+        [:capcut_mcp, :draft, :schema_version],
+        fn event, measurements, metadata, _ ->
+          send(test_pid, {event, measurements, metadata})
+        end,
+        nil
+      )
+
+    on_exit(fn -> :telemetry.detach(handler_id) end)
   end
 end

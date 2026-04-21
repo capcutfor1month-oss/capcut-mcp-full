@@ -208,6 +208,7 @@ Emitted events:
 | `[:capcut_mcp, :cache, :miss]`                     | `:count` (always `1`)               | `:id`                                  |
 | `[:capcut_mcp, :cache, :write]`                    | `:count` (always `1`)               | `:id`, `:reason` (`:load` \| `:update` \| `:create`) |
 | `[:capcut_mcp, :blend_modes, :load]`               | `:duration`                         | `:result` (`:ok` \| `:error`), `:count?`, `:path?`, `:reason?` |
+| `[:capcut_mcp, :draft, :schema_version]`           | `:count` (always `1`)               | `:version` (`String.t()` \| `nil`), `:supported` (`boolean`) |
 
 A default log handler in `CapcutMcp.Telemetry` is attached on boot and prints one line per tool call, e.g.:
 
@@ -216,6 +217,8 @@ A default log handler in `CapcutMcp.Telemetry` is attached on boot and prints on
 ```
 
 `Logger.metadata` is populated early in the pipeline (`mcp_request_id`, `mcp_method`, `tool`, `request_id`), so every log line further down the stack — including inside individual tools — is filterable by request.
+
+`[:capcut_mcp, :draft, :schema_version]` fires on every successful `read_draft` and additionally triggers a `Logger.warning` when the draft's `new_version` field is missing or not in `CapcutMcp.CapCut.Reader.supported_versions/0` — the server still reads the draft, it just flags that the on-disk schema is untested.
 
 The cache and blend-modes events are emitted but *not* logged by default (they're chatty on hit paths). Attach your own handler if you want a running hit-rate or a disk-load audit trail:
 
