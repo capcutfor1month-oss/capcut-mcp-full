@@ -1,7 +1,7 @@
 defmodule CapcutMcp.CapCut.ProjectStoreTest do
   use ExUnit.Case
 
-  alias CapcutMcp.CapCut.{ProjectMeta, ProjectStore}
+  alias CapcutMcp.CapCut.{ManifestSchema, ProjectMeta, ProjectStore}
 
   setup %{tmp_dir: tmp} do
     project_id = "TEST-001"
@@ -147,6 +147,81 @@ defmodule CapcutMcp.CapCut.ProjectStoreTest do
     {:ok, projects} = ProjectStore.list_projects()
     ids = Enum.map(projects, & &1.id)
     assert new_id in ids
+  end
+
+  @tag :tmp_dir
+  test "create_project writes a CapCut-compatible 32-field manifest entry", %{tmp: tmp} do
+    assert {:ok, new_id} = ProjectStore.create_project(%{"name" => "Schema Probe"})
+
+    {:ok, content} = File.read(Path.join(tmp, "root_meta_info.json"))
+    {:ok, meta} = Jason.decode(content)
+
+    entry = Enum.find(meta["all_draft_store"], &(&1["draft_id"] == new_id))
+
+    # Full 32-key schema — CapCut drops manifest entries that miss any of these
+    # on startup, so any regression here silently makes MCP-created projects
+    # invisible in the CapCut UI after the next restart.
+    assert Enum.sort(Map.keys(entry)) == ManifestSchema.keys()
+
+    # Sentinel defaults that ByteDance-style cloud clients key off of.
+    assert entry["streaming_edit_draft_ready"] == true
+    assert entry["draft_new_version"] == "164.0.0"
+    assert entry["tm_draft_cloud_entry_id"] == -1
+    assert entry["tm_draft_cloud_user_id"] == -1
+  end
+
+  @tag :tmp_dir
+  test "create_project normalizes manifest paths to CapCut's forward-slash convention",
+       %{tmp: tmp} do
+    {:ok, new_id} = ProjectStore.create_project(%{"name" => "Path Probe"})
+
+    {:ok, content} = File.read(Path.join(tmp, "root_meta_info.json"))
+    {:ok, meta} = Jason.decode(content)
+
+    entry = Enum.find(meta["all_draft_store"], &(&1["draft_id"] == new_id))
+
+    # draft_fold_path and draft_root_path: forward slashes only.
+    refute String.contains?(entry["draft_fold_path"], "\\")
+    refute String.contains?(entry["draft_root_path"], "\\")
+    refute String.contains?(entry["draft_cover"], "\\")
+
+    # draft_json_file: forward-slash folder, single backslash before the filename.
+    assert String.ends_with?(entry["draft_json_file"], "\\draft_content.json")
+    assert entry["draft_json_file"] |> String.graphemes() |> Enum.count(&(&1 == "\\")) == 1
+
+    # Root-object root_path is forward-slash too.
+    refute String.contains?(meta["root_path"], "\\")
+  end
+
+  @tag :tmp_dir
+  test "draft_ids always equals length(all_draft_store) across create/remove sequences",
+       %{tmp: tmp} do
+    # Start with the 1 seed entry from setup
+    assert_draft_ids_consistent(tmp)
+
+    {:ok, a} = ProjectStore.create_project(%{"name" => "A"})
+    assert_draft_ids_consistent(tmp)
+
+    {:ok, b} = ProjectStore.create_project(%{"name" => "B"})
+    assert_draft_ids_consistent(tmp)
+
+    {:ok, _c} = ProjectStore.create_project(%{"name" => "C"})
+    assert_draft_ids_consistent(tmp)
+
+    :ok = ProjectStore.remove_project(b)
+    assert_draft_ids_consistent(tmp)
+
+    :ok = ProjectStore.remove_project(a)
+    assert_draft_ids_consistent(tmp)
+  end
+
+  defp assert_draft_ids_consistent(tmp) do
+    {:ok, content} = File.read(Path.join(tmp, "root_meta_info.json"))
+    {:ok, meta} = Jason.decode(content)
+
+    assert meta["draft_ids"] == length(meta["all_draft_store"]),
+           "draft_ids=#{meta["draft_ids"]} but all_draft_store has " <>
+             "#{length(meta["all_draft_store"])} entries"
   end
 
   @tag :tmp_dir

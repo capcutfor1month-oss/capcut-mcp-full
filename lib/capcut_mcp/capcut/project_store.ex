@@ -23,7 +23,17 @@ defmodule CapcutMcp.CapCut.ProjectStore do
 
   use GenServer
   require Logger
-  alias CapcutMcp.CapCut.{Draft, PathDiscovery, ProjectMeta, Reader, Writer}
+
+  alias CapcutMcp.CapCut.{
+    Draft,
+    ManifestSchema,
+    PathDiscovery,
+    PathUtil,
+    ProjectMeta,
+    Reader,
+    Writer
+  }
+
   alias CapcutMcp.Tools.TimelineHelper
 
   @table :capcut_project_cache
@@ -296,36 +306,32 @@ defmodule CapcutMcp.CapCut.ProjectStore do
         _ -> %{}
       end
 
-    now = System.os_time(:microsecond)
-    json_file = Path.join(project_path, "draft_content.json")
+    fold_path = PathUtil.to_forward(project_path)
 
-    new_entry = %{
-      "draft_id" => id,
-      "draft_name" => name,
-      "draft_fold_path" => project_path,
-      "draft_json_file" => json_file,
-      "tm_draft_create" => now,
-      "tm_draft_modified" => now,
-      "tm_draft_removed" => 0,
-      "tm_duration" => 0,
-      "cloud_draft_sync" => false,
-      "draft_is_invisible" => false
-    }
+    new_entry =
+      ManifestSchema.new_entry(
+        draft_id: id,
+        draft_name: name,
+        fold_path: fold_path,
+        json_file: PathUtil.draft_json_file(project_path),
+        cover_path: PathUtil.draft_cover(project_path),
+        root_path: PathUtil.to_forward(root_path),
+        now_us: System.os_time(:microsecond)
+      )
 
-    # Use Map.update/4 with defaults so a foreign-shaped but valid JSON — e.g. a
-    # future CapCut version that drops one of these keys — doesn't crash the
-    # GenServer.
+    # Always derive `draft_ids` from `length(all_draft_store)` — incrementing
+    # drifts in multi-step corruption scenarios, and CapCut uses the counter
+    # as a consistency check on startup. Always overwrite `root_path` with the
+    # normalized form so a hybrid-separator value from a prior write is healed.
     updated =
       existing
-      |> Map.put_new("root_path", root_path)
+      |> Map.put("root_path", PathUtil.to_forward(root_path))
       |> Map.update("all_draft_store", [new_entry], fn
         list when is_list(list) -> [new_entry | list]
         _ -> [new_entry]
       end)
-      |> Map.update("draft_ids", 1, fn
-        n when is_integer(n) -> n + 1
-        _ -> 1
-      end)
+
+    updated = Map.put(updated, "draft_ids", length(updated["all_draft_store"]))
 
     Writer.write_root_meta(root_path, updated)
   end
@@ -361,10 +367,7 @@ defmodule CapcutMcp.CapCut.ProjectStore do
   defp apply_remaining(data, remaining) do
     data
     |> Map.put("all_draft_store", remaining)
-    |> Map.update("draft_ids", length(remaining), fn
-      n when is_integer(n) and n > 0 -> n - 1
-      _ -> length(remaining)
-    end)
+    |> Map.put("draft_ids", length(remaining))
   end
 
   defp maybe_delete_folder(_entry, _root, true), do: :ok
