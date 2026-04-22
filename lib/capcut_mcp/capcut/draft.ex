@@ -67,7 +67,7 @@ defmodule CapcutMcp.CapCut.Draft do
               "videos" => []
             },
             version: 360_000,
-            new_version: "163.0.0",
+            new_version: "164.0.0",
             create_time: 0,
             update_time: 0
 

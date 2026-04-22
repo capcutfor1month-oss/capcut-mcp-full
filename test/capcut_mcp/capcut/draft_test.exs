@@ -24,7 +24,7 @@ defmodule CapcutMcp.CapCut.DraftTest do
       assert draft.duration == 0
       assert draft.tracks == []
       assert draft.version == 360_000
-      assert draft.new_version == "163.0.0"
+      assert draft.new_version == "164.0.0"
     end
 
     test "coerces integer :fps to float" do
