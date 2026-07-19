@@ -150,7 +150,7 @@ defmodule CapcutMcp.CapCut.ProjectStoreTest do
   end
 
   @tag :tmp_dir
-  test "create_project writes a CapCut-compatible 32-field manifest entry", %{tmp: tmp} do
+  test "create_project writes a CapCut-compatible full-schema manifest entry", %{tmp: tmp} do
     assert {:ok, new_id} = ProjectStore.create_project(%{"name" => "Schema Probe"})
 
     {:ok, content} = File.read(Path.join(tmp, "root_meta_info.json"))
@@ -158,16 +158,51 @@ defmodule CapcutMcp.CapCut.ProjectStoreTest do
 
     entry = Enum.find(meta["all_draft_store"], &(&1["draft_id"] == new_id))
 
-    # Full 32-key schema — CapCut drops manifest entries that miss any of these
-    # on startup, so any regression here silently makes MCP-created projects
-    # invisible in the CapCut UI after the next restart.
+    # Full ManifestSchema.keys() shape — CapCut drops manifest entries that
+    # miss any of these on startup, so any regression here silently makes
+    # MCP-created projects invisible in the CapCut UI after the next restart.
+    # See ManifestSchema's moduledoc for why the key count differs by platform.
     assert Enum.sort(Map.keys(entry)) == ManifestSchema.keys()
 
     # Sentinel defaults that ByteDance-style cloud clients key off of.
     assert entry["streaming_edit_draft_ready"] == true
-    assert entry["draft_new_version"] == "164.0.0"
+    # Ground truth (2026-07-20): a real, freshly-created, never-edited
+    # CapCut project's manifest entry carries an EMPTY draft_new_version —
+    # "164.0.0" only appears once a project has actually been edited.
+    assert entry["draft_new_version"] == ""
     assert entry["tm_draft_cloud_entry_id"] == -1
     assert entry["tm_draft_cloud_user_id"] == -1
+  end
+
+  @tag :tmp_dir
+  test "create_project's draft_info.json id is the timeline id, not the manifest draft_id",
+       %{tmp: tmp} do
+    # This is the confirmed root cause of CapCut silently refusing to open
+    # every MCP-created project through v10 (2026-07-19/20 investigation).
+    # draft_info.json's own `id` field is NOT the project's identity — it's
+    # the TIMELINE id. Checked across all 12 real CapCut projects on disk:
+    # every one has draft_info.json's `id` DIFFERENT from its manifest
+    # `draft_id`, and matching its own `Timelines/[uuid]` subfolder name.
+    # Live-tested fix: a project built this way opened successfully in the
+    # real CapCut app and the fix survived a full quit/relaunch.
+    assert {:ok, new_id} = ProjectStore.create_project(%{"name" => "IdentityProbe"})
+
+    {:ok, draft_content} =
+      File.read(Path.join([tmp, "IdentityProbe", "draft_info.json"]))
+
+    {:ok, draft_json} = Jason.decode(draft_content)
+
+    refute draft_json["id"] == new_id
+
+    # The internal id must equal the Timelines/ subfolder's own name.
+    timelines_dir = Path.join([tmp, "IdentityProbe", "Timelines"])
+
+    [timeline_id] =
+      timelines_dir
+      |> File.ls!()
+      |> Enum.filter(&File.dir?(Path.join(timelines_dir, &1)))
+
+    assert draft_json["id"] == timeline_id
   end
 
   @tag :tmp_dir
@@ -185,9 +220,21 @@ defmodule CapcutMcp.CapCut.ProjectStoreTest do
     refute String.contains?(entry["draft_root_path"], "\\")
     refute String.contains?(entry["draft_cover"], "\\")
 
-    # draft_json_file: forward-slash folder, single backslash before the filename.
-    assert String.ends_with?(entry["draft_json_file"], "\\draft_content.json")
-    assert entry["draft_json_file"] |> String.graphemes() |> Enum.count(&(&1 == "\\")) == 1
+    # draft_json_file: Windows gets forward-slash folder + single backslash
+    # before the filename; macOS (and everything else) gets pure forward
+    # slashes throughout. See PathUtil.draft_json_file/1.
+    case :os.type() do
+      {:win32, _} ->
+        assert String.ends_with?(entry["draft_json_file"], "\\draft_info.json")
+
+        assert entry["draft_json_file"]
+               |> String.graphemes()
+               |> Enum.count(&(&1 == "\\")) == 1
+
+      _ ->
+        assert String.ends_with?(entry["draft_json_file"], "/draft_info.json")
+        refute String.contains?(entry["draft_json_file"], "\\")
+    end
 
     # Root-object root_path is forward-slash too.
     refute String.contains?(meta["root_path"], "\\")

@@ -4,10 +4,21 @@ defmodule CapcutMcp.CapCut.ManifestSchema do
 
   CapCut validates manifest entries on startup and silently drops entries that
   miss required keys. A minimal 10-field entry survives our own reader but is
-  rejected by the CapCut UI. `new_entry/1` returns the full 32-field shape
+  rejected by the CapCut UI. `new_entry/1` returns the full field shape
   observed in native CapCut builds (164.0.0), with caller-controlled values
   for the identity/timestamp/path fields and ByteDance-style sentinel defaults
   for cloud/draft-state fields.
+
+  The original 32-field shape here was reverse-engineered from Windows CapCut
+  manifests only. Live entries from macOS CapCut 164.0.0 additionally carry
+  five `pippit_*` / `draft_is_pippit_draft` fields (Pippit is ByteDance's
+  separate AI-avatar app; CapCut's manifest schema apparently unified with it
+  on macOS builds but not the Windows build this was first tested against).
+  Confirmed by diffing a tool-written entry lacking them against a real macOS
+  entry: CapCut's project list silently omitted the tool-written entry even
+  after a full quit and relaunch, and the omission stopped after adding these
+  fields. Missing them is the same silent-drop failure mode described above,
+  just on a different platform than the one this module was validated on.
   """
 
   @draft_entry_defaults %{
@@ -21,10 +32,14 @@ defmodule CapcutMcp.CapCut.ManifestSchema do
     "draft_is_ai_shorts" => false,
     "draft_is_cloud_temp_draft" => false,
     "draft_is_invisible" => false,
+    "draft_is_pippit_draft" => false,
     "draft_is_web_article_video" => false,
-    "draft_timeline_materials_size" => 0,
     "draft_type" => "",
     "draft_web_article_video_enter_from" => "",
+    "pippit_avatar_url" => "",
+    "pippit_extra_info" => "",
+    "pippit_id" => "",
+    "pippit_user_name" => "",
     "streaming_edit_draft_ready" => true,
     "tm_draft_cloud_completed" => "",
     "tm_draft_cloud_entry_id" => -1,
@@ -56,7 +71,8 @@ defmodule CapcutMcp.CapCut.ManifestSchema do
           cover_path: String.t(),
           root_path: String.t(),
           now_us: integer(),
-          version: String.t()
+          version: String.t(),
+          timeline_materials_size: non_neg_integer()
         ]
 
   @doc """
@@ -72,6 +88,7 @@ defmodule CapcutMcp.CapCut.ManifestSchema do
       "draft_name",
       "draft_new_version",
       "draft_root_path",
+      "draft_timeline_materials_size",
       "tm_draft_create",
       "tm_draft_modified"
     ]
@@ -83,6 +100,18 @@ defmodule CapcutMcp.CapCut.ManifestSchema do
   Builds a manifest entry. All keys in `@required_opts` must be provided;
   `:version` defaults to the latest schema version observed in the wild
   (`#{@default_version}`).
+
+  `:timeline_materials_size` defaults to `0` but should be passed as the
+  byte size of the encoded `draft_info.json` content. Confirmed load-bearing
+  for CapCut's *open* action (a separate gate from the project-list
+  visibility check both other fields in this module fix): a real, empty,
+  never-edited project's manifest entry carries this field equal to its
+  `draft_info.json`'s exact byte count (4181 in the captured case) — not 0,
+  despite having no actual media/materials. A manifest entry written with
+  this hardcoded to `0` appeared in CapCut's project list but silently
+  failed to open (no file access, no error, just no navigation) even after
+  a full quit/relaunch, while an otherwise-identical CapCut-created project
+  opened normally.
   """
   @spec new_entry(opts()) :: map()
   def new_entry(opts) do
@@ -96,6 +125,7 @@ defmodule CapcutMcp.CapCut.ManifestSchema do
       "draft_cover" => Keyword.fetch!(opts, :cover_path),
       "draft_new_version" => Keyword.get(opts, :version, @default_version),
       "draft_root_path" => Keyword.fetch!(opts, :root_path),
+      "draft_timeline_materials_size" => Keyword.get(opts, :timeline_materials_size, 0),
       "tm_draft_create" => Keyword.fetch!(opts, :now_us),
       "tm_draft_modified" => Keyword.fetch!(opts, :now_us)
     })

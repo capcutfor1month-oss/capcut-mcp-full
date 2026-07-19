@@ -19,6 +19,19 @@ defmodule CapcutMcp.CapCut.BlendModes do
 
   Useful for confirming the lazy-load path is actually lazy (should only ever
   fire once in production).
+
+  ## macOS support (2026-07-20)
+
+  Windows caches every installed CapCut version side-by-side under
+  `%LOCALAPPDATA%\CapCut\Apps\<version>\Resources\MixMode\MixMode.json`, so
+  discovery has to scan for the latest version-numbered folder. macOS ships
+  one fixed `.app` bundle per install with no such per-version folder --
+  confirmed against a real `/Applications/CapCut.app`, `MixMode.json` lives
+  directly at `Contents/Resources/MixMode/MixMode.json`. `find_mix_mode_dir/0`
+  tries that flat layout first and only falls back to the Windows
+  version-scan if it isn't found, and `apps_path/0` auto-detects
+  `/Applications/CapCut.app/Contents/Resources` the same way `PathDiscovery`
+  auto-detects `~/Movies/CapCut/...` for the projects folder.
   """
 
   @ets_table :capcut_blend_modes
@@ -131,8 +144,32 @@ defmodule CapcutMcp.CapCut.BlendModes do
   end
 
   defp find_mix_mode_dir do
-    with {:ok, apps_path} <- apps_path(),
-         {:ok, entries} <- list_apps_entries(apps_path),
+    with {:ok, apps_path} <- apps_path() do
+      # macOS CapCut ships one fixed .app bundle per install with
+      # `Contents/Resources/MixMode/MixMode.json` directly -- no
+      # version-numbered subdirectory the way Windows' AppData cache has
+      # one folder per installed CapCut version. Try the flat layout
+      # first (verified against a real /Applications/CapCut.app), then
+      # fall back to the Windows version-scan.
+      case flat_mix_mode_dir(apps_path) do
+        {:ok, dir} -> {:ok, dir}
+        {:error, _} -> versioned_mix_mode_dir(apps_path)
+      end
+    end
+  end
+
+  defp flat_mix_mode_dir(apps_path) do
+    mix_mode_dir = Path.join([apps_path, "MixMode"])
+
+    if File.exists?(Path.join(mix_mode_dir, "MixMode.json")) do
+      {:ok, mix_mode_dir}
+    else
+      {:error, "No flat MixMode dir at #{mix_mode_dir}"}
+    end
+  end
+
+  defp versioned_mix_mode_dir(apps_path) do
+    with {:ok, entries} <- list_apps_entries(apps_path),
          {:ok, version_dir} <- pick_latest_version(apps_path, entries) do
       verify_mix_mode_dir(apps_path, version_dir)
     end
@@ -197,6 +234,8 @@ defmodule CapcutMcp.CapCut.BlendModes do
 
   defp decode_mode_entry(_incomplete, _mix_mode_dir), do: []
 
+  @macos_default_apps_path "/Applications/CapCut.app/Contents/Resources"
+
   defp apps_path do
     cond do
       present_env?("CAPCUT_APPS_PATH") ->
@@ -205,8 +244,13 @@ defmodule CapcutMcp.CapCut.BlendModes do
       present_env?("LOCALAPPDATA") ->
         {:ok, Path.join([System.fetch_env!("LOCALAPPDATA"), "CapCut", "Apps"])}
 
+      File.dir?(@macos_default_apps_path) ->
+        {:ok, @macos_default_apps_path}
+
       true ->
-        {:error, "CapCut apps directory not configured. Set CAPCUT_APPS_PATH or LOCALAPPDATA."}
+        {:error,
+         "CapCut apps directory not configured. Set CAPCUT_APPS_PATH or LOCALAPPDATA, " <>
+           "or install CapCut to /Applications on macOS."}
     end
   end
 

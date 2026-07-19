@@ -31,6 +31,7 @@ defmodule CapcutMcp.CapCut.ProjectStore do
     PathUtil,
     ProjectMeta,
     Reader,
+    Scaffold,
     Writer
   }
 
@@ -176,9 +177,22 @@ defmodule CapcutMcp.CapCut.ProjectStore do
     id = generate_uuid()
     name = Map.get(params, "name", "New Project")
 
+    # Ground truth (2026-07-20): draft_info.json's own `id` field is NOT
+    # the project's identity — it's the TIMELINE id. Checked across all 12
+    # real projects on disk: every single one has draft_info.json's `id`
+    # DIFFERENT from its root_meta_info.json `draft_id`, and the 10
+    # long-used real projects all share the exact same internal `id`
+    # (reused across unrelated projects, matching their shared
+    # `Timelines/[uuid]` subfolder name) — proving this field carries no
+    # per-project uniqueness requirement at all. Every version of this
+    # module through v10 wrongly used the same UUID for both, which is
+    # backwards from what CapCut itself produces.
+    timeline_id = generate_uuid()
+    timelines_project_id = generate_uuid()
+
     with {:ok, draft} <-
            Draft.new(
-             id: id,
+             id: timeline_id,
              name: name,
              width: Map.get(params, "width", 1920),
              height: Map.get(params, "height", 1080),
@@ -186,15 +200,38 @@ defmodule CapcutMcp.CapCut.ProjectStore do
            ) do
       draft_map = Draft.to_json(draft)
       project_path = Path.join(root, sanitize_dir_name(name))
+      now_us = System.os_time(:microsecond)
+
+      # Ground truth (2026-07-20, diffing a real CapCut-created empty
+      # project's manifest entry against 10 real, long-used projects):
+      # `draft_timeline_materials_size` is the total byte size of imported
+      # MEDIA, not the draft_info.json content — real projects with actual
+      # footage show sizes in the hundreds of millions, while a genuinely
+      # fresh, zero-media project shows exactly 0. A prior session
+      # mistakenly concluded this had to equal draft_info.json's own byte
+      # count from a single capture that happened to be close; that byte-
+      # size computation is now known wrong for the create_project (no
+      # media) case and is replaced with the true ground-truth value: 0.
+      timeline_materials_size = 0
+
+      scaffold_opts = %{
+        draft_map: draft_map,
+        now_us: now_us,
+        timeline_materials_size: timeline_materials_size,
+        timeline_id: timeline_id,
+        timelines_project_id: timelines_project_id
+      }
 
       with :ok <- File.mkdir_p(project_path),
            :ok <- Writer.write_draft(project_path, draft_map),
-           :ok <- update_root_meta(root, id, name, project_path) do
+           :ok <- write_scaffold(project_path, root, id, name, scaffold_opts),
+           :ok <-
+             update_root_meta(root, id, name, project_path, now_us, timeline_materials_size) do
         meta = %ProjectMeta{
           id: id,
           name: name,
           path: project_path,
-          modified_at: System.os_time(:microsecond),
+          modified_at: now_us,
           duration_ms: 0
         }
 
@@ -202,6 +239,42 @@ defmodule CapcutMcp.CapCut.ProjectStore do
         {:ok, id}
       end
     end
+  end
+
+  # Writes the companion-file scaffold CapCut itself creates alongside a new
+  # project's draft_info.json — without these, CapCut silently omits the
+  # project from its list even with a fully schema-complete manifest entry
+  # and draft file. See Scaffold's moduledoc for how this was determined.
+  defp write_scaffold(project_path, root, id, name, scaffold_opts) do
+    files =
+      Scaffold.build(
+        draft_id: id,
+        name: name,
+        fold_path: PathUtil.to_forward(project_path),
+        root_path: PathUtil.to_forward(root),
+        timeline_id: scaffold_opts.timeline_id,
+        timelines_project_id: scaffold_opts.timelines_project_id,
+        now_us: scaffold_opts.now_us,
+        draft_json: scaffold_opts.draft_map,
+        timeline_materials_size: scaffold_opts.timeline_materials_size
+      )
+
+    Enum.reduce_while(files, :ok, fn {rel_path, content}, :ok ->
+      full_path = Path.join(project_path, rel_path)
+
+      with :ok <- File.mkdir_p(Path.dirname(full_path)),
+           :ok <- write_scaffold_file(full_path, content) do
+        {:cont, :ok}
+      else
+        {:error, _} = err -> {:halt, err}
+      end
+    end)
+  end
+
+  defp write_scaffold_file(path, content) when is_binary(content), do: File.write(path, content)
+
+  defp write_scaffold_file(path, content) when is_map(content) do
+    with {:ok, encoded} <- Jason.encode(content), do: File.write(path, encoded)
   end
 
   # ── Private helpers ──────────────────────────────────────────────────────────
@@ -295,7 +368,7 @@ defmodule CapcutMcp.CapCut.ProjectStore do
     end
   end
 
-  defp update_root_meta(root_path, id, name, project_path) do
+  defp update_root_meta(root_path, id, name, project_path, now_us, timeline_materials_size) do
     meta_file = Path.join(root_path, "root_meta_info.json")
 
     existing =
@@ -316,7 +389,14 @@ defmodule CapcutMcp.CapCut.ProjectStore do
         json_file: PathUtil.draft_json_file(project_path),
         cover_path: PathUtil.draft_cover(project_path),
         root_path: PathUtil.to_forward(root_path),
-        now_us: System.os_time(:microsecond)
+        now_us: now_us,
+        timeline_materials_size: timeline_materials_size,
+        # Ground truth (2026-07-20): a real, freshly-created, never-edited
+        # CapCut project carries an EMPTY string here, not a version
+        # number — "164.0.0" only appears once a project has actually been
+        # edited/saved with real content. Confirmed on two independent
+        # native creations (both showed "" until edited).
+        version: ""
       )
 
     # Always derive `draft_ids` from `length(all_draft_store)` — incrementing

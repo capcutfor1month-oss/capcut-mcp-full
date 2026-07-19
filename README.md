@@ -8,11 +8,13 @@
 
 An [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) server for CapCut, written in Elixir. Lets Claude read and edit CapCut projects directly -- no CapCut API needed. Works by reading and writing CapCut's local JSON project files.
 
+**"Full" means the write path actually works.** Most CapCut automation tools (this one's own upstream included) can write a schema-correct `draft_info.json` that shows up in CapCut's project list -- and then silently fail to open when you click it, with zero error and zero file access logged. That failure mode has a root cause: `draft_info.json` carries an internal `id` field that has to be the project's *timeline* id, not its project identity -- they're supposed to be two different UUIDs. Every tool we could find (including every earlier version of this one) uses the same UUID for both. This fork fixes that, adds full macOS support (path discovery, `draft_info.json`/`draft_content.json` naming across CapCut versions, the full companion-file scaffold CapCut itself writes for a new project), and verifies live against a real CapCut install that a programmatically-created project actually opens -- not just lists.
+
 Built just for fun in a "crazy" language. Elixir/OTP with GenServers, supervision trees, pattern matching and pipes everywhere.
 
 ## What it does
 
-Claude gets 15 tools to work with your CapCut projects:
+Claude gets 16 tools to work with your CapCut projects:
 
 **Read & Inspect**
 
@@ -23,11 +25,12 @@ Claude gets 15 tools to work with your CapCut projects:
 | `get_timeline` | See all tracks, clips, and their timecodes |
 | `read_draft_json` | Return the full raw project JSON for debugging |
 
-**Create & Add**
+**Create, Remove & Add**
 
 | Tool | What Claude can do |
 |------|--------------------|
-| `create_project` | Create a new empty draft (custom size/FPS) |
+| `create_project` | Create a new empty draft (custom size/FPS) -- writes CapCut's full companion-file scaffold and the timeline/project id split so it actually opens, not just lists |
+| `remove_project` | Delete a draft (manifest entry + on-disk folder) |
 | `add_text` | Add a text overlay at a specific time |
 | `add_clip` | Add a video or audio file to the timeline (validates file exists) |
 
@@ -55,12 +58,14 @@ Example prompts once connected:
 
 ## Requirements
 
-- Windows (CapCut stores projects in `%LOCALAPPDATA%\CapCut\`)
+- **Windows** (CapCut stores projects in `%LOCALAPPDATA%\CapCut\`) or **macOS** (`~/Movies/CapCut/User Data/Projects/com.lveditor.draft`)
 - [Erlang/OTP 28](https://www.erlang.org/downloads) installed
 - Elixir 1.19+ (see [Installation](#installation))
 - CapCut desktop app installed
 
 ## Installation
+
+### Windows
 
 **1. Install Erlang OTP** (if not already installed):
 ```bash
@@ -81,10 +86,24 @@ Expand-Archive "$env:USERPROFILE\elixir.zip" -DestinationPath "$env:USERPROFILE\
 )
 ```
 
+### macOS
+
+**1. Install Erlang + Elixir via Homebrew:**
+```bash
+brew install elixir
+```
+
+If `brew link erlang` conflicts with an existing tool of the same name on your `PATH` (this happens if you have an unrelated CLI also named `typer`, `escript`, etc.), don't force-overwrite it -- just scope the PATH for this project instead:
+```bash
+export PATH="$(brew --prefix erlang)/bin:$PATH"
+```
+
+### Both platforms
+
 **3. Clone and build:**
 ```bash
-git clone https://github.com/burnshall-ui/capcut-mcp.git
-cd capcut-mcp
+git clone https://github.com/capcutfor1month-oss/capcut-mcp-full.git
+cd capcut-mcp-full
 mix deps.get
 mix compile
 ```
@@ -119,11 +138,28 @@ Create (or edit) `.claude/settings.json` in the project root:
 
 Restart Claude Code -- the `capcut` tools appear automatically.
 
+On macOS, use forward-slash paths and point `PATH` at wherever Homebrew installed Erlang/Elixir (`brew --prefix erlang` / `brew --prefix elixir`):
+
+```json
+{
+  "mcpServers": {
+    "capcut": {
+      "command": "mix",
+      "args": ["run", "--no-halt"],
+      "cwd": "/Users/<you>/capcut-mcp-full",
+      "env": {
+        "PATH": "/opt/homebrew/bin:/opt/homebrew/opt/erlang/bin:/usr/bin:/bin"
+      }
+    }
+  }
+}
+```
+
 ### Claude Desktop
 
-Claude Desktop ignores the `cwd` config field on Windows, so `mix run` wouldn't find `mix.exs`. The fix is a small wrapper script that changes into the project directory first.
+Claude Desktop ignores the `cwd` config field, so `mix run` wouldn't find `mix.exs`. The fix is a small wrapper script that changes into the project directory first.
 
-The repo ships a `start-mcp.bat` that does exactly that. Edit it to point at your Elixir installation if it differs from the default:
+**Windows** -- the repo ships a `start-mcp.bat` that does exactly that. Edit it to point at your Elixir installation if it differs from the default:
 
 ```bat
 @echo off
@@ -143,6 +179,29 @@ Then add it to `%APPDATA%\Claude\claude_desktop_config.json`:
 }
 ```
 
+**macOS** -- the repo ships a `start-mcp.sh` (make it executable once with `chmod +x start-mcp.sh`):
+
+```bash
+#!/bin/sh
+cd "$(dirname "$0")"
+mix run --no-halt
+```
+
+Then add it to `~/Library/Application Support/Claude/claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "capcut": {
+      "command": "/Users/<you>/capcut-mcp-full/start-mcp.sh",
+      "env": {
+        "PATH": "/opt/homebrew/bin:/opt/homebrew/opt/erlang/bin:/usr/bin:/bin"
+      }
+    }
+  }
+}
+```
+
 Restart Claude Desktop.
 
 ## Configuration
@@ -151,25 +210,32 @@ Restart Claude Desktop.
 
 1. The `CAPCUT_PATH` environment variable
 2. `%LOCALAPPDATA%\CapCut\User Data\Projects\com.lveditor.draft` — the standard Windows install path
+3. `~/Movies/CapCut/User Data/Projects/com.lveditor.draft` — the standard macOS install path
 
-If neither resolves to an existing directory, the server still boots. The first tool call that needs disk access returns a descriptive error listing what was tried, so Claude can relay it back to you verbatim.
+If none resolve to an existing directory, the server still boots. The first tool call that needs disk access returns a descriptive error listing what was tried, so Claude can relay it back to you verbatim.
 
 Override the discovered path (e.g. for a portable install) with `CAPCUT_PATH`:
 
 ```bash
+# Windows
 CAPCUT_PATH="D:\CapCut\Projects\com.lveditor.draft" mix run --no-halt
+
+# macOS
+CAPCUT_PATH="/Users/<you>/Movies/CapCut/User Data/Projects/com.lveditor.draft" mix run --no-halt
 ```
 
-Blend mode discovery reads CapCut's local app resources from:
-```text
-C:\Users\<you>\AppData\Local\CapCut\Apps
-```
+Blend mode discovery reads CapCut's local app resources. On Windows this is derived from `%LOCALAPPDATA%\CapCut\Apps` (one folder per installed CapCut version -- the latest is picked automatically); on macOS it defaults to `/Applications/CapCut.app/Contents/Resources` (a single fixed bundle, verified against a real install -- no per-version folder the way Windows has one). You usually don't need to configure this manually on either platform.
 
-Usually you do not need to configure this manually on Windows because it is derived from `%LOCALAPPDATA%`.
 If your CapCut installation lives elsewhere, override it with `CAPCUT_APPS_PATH`:
 ```bash
+# Windows
 CAPCUT_APPS_PATH="D:\PortableApps\CapCut\Apps" mix run --no-halt
+
+# macOS
+CAPCUT_APPS_PATH="/Users/<you>/Applications/CapCut.app/Contents/Resources" mix run --no-halt
 ```
+
+`set_clip_blend_mode` is the only tool that needs this; everything else (including `create_project`) works without it.
 
 ## Architecture
 
@@ -285,6 +351,10 @@ iex -S mix run --no-halt
 - **:telemetry** -- structured events for every tool call
 - **Credo** (`--strict`) -- zero issues
 - **Dialyzer** (`:underspecs`, `:error_handling`, `:unknown`) -- zero warnings
-- **ExUnit** -- 164 tests + 12 `stream_data` property tests + 6 doctests (incl. JSON-RPC integration tests with telemetry assertions on tools + cache + blend-modes + schema-version + meta-rejected events, path-discovery fallbacks, a boundary fuzz test that hammers every registered tool with random `StreamData.term()` arguments, and timeline-mutation invariants like `update_segment` roundtrip, `ensure_timerange` idempotency and `insert_segment` count preservation)
+- **ExUnit** -- 217 tests + 15 `stream_data` property tests + 8 doctests (incl. JSON-RPC integration tests with telemetry assertions on tools + cache + blend-modes + schema-version + meta-rejected events, path-discovery fallbacks for both Windows and macOS, a boundary fuzz test that hammers every registered tool with random `StreamData.term()` arguments, and timeline-mutation invariants like `update_segment` roundtrip, `ensure_timerange` idempotency and `insert_segment` count preservation)
 - **StreamData** -- property-based tests for `TimelineHelper` (UUID format, segment roundtrip, track insertion invariants, `validate_timing` domain) and for the `tools/call` request boundary (no random payload may crash the dispatcher)
-- **ExCoveralls** -- ~88% line coverage on application code (remaining gaps are the stdin-loop I/O layer and a few lazy disk helpers)
+- **ExCoveralls** -- coverage report on application code (remaining gaps are the stdin-loop I/O layer and a few lazy disk helpers)
+
+## Credits
+
+Started from [burnshall-ui/capcut-mcp](https://github.com/burnshall-ui/capcut-mcp). This fork adds full macOS support (path/blend-mode auto-discovery, the companion-file scaffold CapCut itself writes for a new project) and fixes the write path so a programmatically-created project actually opens in CapCut's editor -- not just lists. See the moduledocs in `lib/capcut_mcp/capcut/draft.ex`, `scaffold.ex`, `project_store.ex`, and `path_discovery.ex` for the full investigation and the confirmed root cause.

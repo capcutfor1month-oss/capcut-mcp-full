@@ -13,13 +13,28 @@ defmodule CapcutMcp.CapCut.ProjectStoreDiscoveryTest do
   setup do
     previous_env = Application.get_env(:capcut_mcp, :capcut_path)
     previous_localappdata = System.get_env("LOCALAPPDATA")
+    previous_home = System.get_env("HOME")
 
     Application.delete_env(:capcut_mcp, :capcut_path)
     System.delete_env("LOCALAPPDATA")
 
+    # Point HOME at a fresh dir with no `Movies/CapCut/...` so the macOS
+    # default-location fallback doesn't pick up this machine's real
+    # CapCut install — this test suite specifically covers the "no path
+    # available anywhere" cold-start case.
+    fake_home =
+      Path.join(
+        System.tmp_dir!(),
+        "project_store_discovery_test_home_#{System.unique_integer([:positive])}"
+      )
+
+    File.mkdir_p!(fake_home)
+    System.put_env("HOME", fake_home)
+
     on_exit(fn ->
       restore_app_env(:capcut_path, previous_env)
       restore_env("LOCALAPPDATA", previous_localappdata)
+      restore_env("HOME", previous_home)
     end)
 
     :ok

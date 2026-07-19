@@ -150,7 +150,11 @@
           {Credo.Check.Warning.OperationWithConstantResult, []},
           {Credo.Check.Warning.RaiseInsideRescue, []},
           {Credo.Check.Warning.SpecWithStruct, []},
-          {Credo.Check.Warning.StructFieldAmount, []},
+          # `%Draft{}` mirrors CapCut's real `draft_info.json` shape 1:1
+          # (36 top-level keys, captured from a real CapCut-created
+          # project) -- the field count is an external constraint, not
+          # something to design away. Raised past the 36 we need.
+          {Credo.Check.Warning.StructFieldAmount, [max_fields: 40]},
           {Credo.Check.Warning.UnsafeExec, []},
           {Credo.Check.Warning.UnusedEnumOperation, []},
           {Credo.Check.Warning.UnusedFileOperation, []},

@@ -3,16 +3,31 @@ defmodule CapcutMcp.CapCut.WriterTest do
   alias CapcutMcp.CapCut.Writer
 
   @tag :tmp_dir
-  test "write_draft creates draft_content.json", %{tmp_dir: tmp} do
+  test "write_draft creates draft_info.json when no draft file exists yet", %{tmp_dir: tmp} do
+    # Neither draft_content.json nor draft_info.json exists — this is the
+    # brand-new-project case. Confirmed via a live filesystem diff that
+    # current CapCut (macOS) writes new projects to draft_info.json, not
+    # draft_content.json — see Writer.write_draft/2's moduledoc.
     draft = %{"id" => "test-id", "name" => "Test"}
     assert :ok = Writer.write_draft(tmp, draft)
-    assert File.exists?(Path.join(tmp, "draft_content.json"))
-    {:ok, content} = File.read(Path.join(tmp, "draft_content.json"))
+    assert File.exists?(Path.join(tmp, "draft_info.json"))
+    refute File.exists?(Path.join(tmp, "draft_content.json"))
+    {:ok, content} = File.read(Path.join(tmp, "draft_info.json"))
     assert {:ok, %{"id" => "test-id"}} = Jason.decode(content)
   end
 
   @tag :tmp_dir
-  test "write_draft creates .bak backup of existing file", %{tmp_dir: tmp} do
+  test "write_draft targets draft_info.json when only that file already exists", %{tmp_dir: tmp} do
+    File.write!(Path.join(tmp, "draft_info.json"), Jason.encode!(%{"id" => "v1"}))
+    assert :ok = Writer.write_draft(tmp, %{"id" => "v2"})
+    {:ok, new} = File.read(Path.join(tmp, "draft_info.json"))
+    assert {:ok, %{"id" => "v2"}} = Jason.decode(new)
+    refute File.exists?(Path.join(tmp, "draft_content.json"))
+  end
+
+  @tag :tmp_dir
+  test "write_draft creates .bak backup of existing draft_content.json file (legacy format)",
+       %{tmp_dir: tmp} do
     original = %{"id" => "v1"}
     File.write!(Path.join(tmp, "draft_content.json"), Jason.encode!(original))
     assert :ok = Writer.write_draft(tmp, %{"id" => "v2"})

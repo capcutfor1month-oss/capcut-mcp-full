@@ -119,12 +119,27 @@ defmodule CapcutMcp.CapCut.Reader do
   """
   @spec read_draft(String.t()) :: {:ok, map()} | {:error, term()}
   def read_draft(draft_path) do
-    json_file = Path.join(draft_path, "draft_content.json")
-
-    with {:ok, content} <- File.read(json_file),
+    with {:ok, json_file} <- resolve_draft_json_file(draft_path),
+         {:ok, content} <- File.read(json_file),
          {:ok, draft} <- Jason.decode(content) do
       emit_schema_version(draft)
       {:ok, draft}
+    end
+  end
+
+  # macOS CapCut installs are inconsistent about which filename carries the
+  # live draft: some project folders only have draft_info.json, others have
+  # both draft_content.json and draft_info.json with identical structure.
+  # Windows CapCut always uses draft_content.json. Prefer draft_content.json
+  # when present (matches upstream/Windows behavior), else fall back.
+  defp resolve_draft_json_file(draft_path) do
+    content_path = Path.join(draft_path, "draft_content.json")
+    info_path = Path.join(draft_path, "draft_info.json")
+
+    cond do
+      File.exists?(content_path) -> {:ok, content_path}
+      File.exists?(info_path) -> {:ok, info_path}
+      true -> {:error, :draft_json_not_found}
     end
   end
 

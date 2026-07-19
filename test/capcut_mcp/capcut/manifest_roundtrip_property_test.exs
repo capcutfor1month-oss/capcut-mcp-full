@@ -3,7 +3,7 @@ defmodule CapcutMcp.CapCut.ManifestRoundtripPropertyTest do
   Property coverage for the two manifest invariants CapCut uses as startup
   consistency checks:
 
-    1. Every `all_draft_store` entry exposes the full 32-key schema.
+    1. Every `all_draft_store` entry exposes the full 37-key schema.
     2. `draft_ids` always equals `length(all_draft_store)`.
 
   Covered at the pure-data layer: `ManifestSchema.new_entry/1` for invariant #1,
@@ -20,12 +20,12 @@ defmodule CapcutMcp.CapCut.ManifestRoundtripPropertyTest do
   @canonical_keys ManifestSchema.keys()
 
   describe "ManifestSchema.new_entry/1 (property)" do
-    property "always returns the canonical 32-key shape regardless of opts" do
+    property "always returns the canonical 37-key shape regardless of opts" do
       check all opts <- opts_gen(), max_runs: 200 do
         entry = ManifestSchema.new_entry(opts)
 
         assert Enum.sort(Map.keys(entry)) == @canonical_keys
-        assert map_size(entry) == 32
+        assert map_size(entry) == 37
       end
     end
 

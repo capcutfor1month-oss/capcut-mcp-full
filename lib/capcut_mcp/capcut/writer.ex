@@ -1,13 +1,34 @@
 defmodule CapcutMcp.CapCut.Writer do
   @moduledoc "Writes CapCut project data to the local filesystem, with backup on overwrite."
 
-  @doc "Writes draft_content.json atomically; backs up existing file to .bak first."
+  @doc """
+  Writes the project's draft JSON atomically; backs up any existing file to
+  `.bak` first.
+
+  Filename is auto-detected to match what's already on disk, mirroring
+  `Reader.read_draft/1`'s lookup order: if `draft_content.json` exists,
+  write there (preserves the legacy format some existing macOS/Windows
+  projects still use — confirmed present without a `Timelines/` folder on a
+  real project, e.g. "MFA Mobile"). Else if `draft_info.json` exists, write
+  there. Else (brand-new project, neither file exists yet) default to
+  `draft_info.json` — confirmed via a live filesystem diff that current
+  CapCut (macOS) writes new projects' content to `draft_info.json` at the
+  project root, not `draft_content.json`, and not nested under `Timelines/`.
+  """
   @spec write_draft(String.t(), map()) :: :ok | {:error, term()}
   def write_draft(draft_path, content) do
-    json_file = Path.join(draft_path, "draft_content.json")
+    json_file = Path.join(draft_path, target_filename(draft_path))
 
     with {:ok, encoded} <- Jason.encode(content),
          do: atomic_write(json_file, encoded, backup: true)
+  end
+
+  defp target_filename(draft_path) do
+    cond do
+      File.exists?(Path.join(draft_path, "draft_content.json")) -> "draft_content.json"
+      File.exists?(Path.join(draft_path, "draft_info.json")) -> "draft_info.json"
+      true -> "draft_info.json"
+    end
   end
 
   @doc """

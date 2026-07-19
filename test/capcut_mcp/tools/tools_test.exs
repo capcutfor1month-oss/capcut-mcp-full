@@ -70,6 +70,17 @@ defmodule CapcutMcp.ToolsTest do
     %{project_id: project_id}
   end
 
+  # Builds a platform-correct absolute path for `file_path` fixtures.
+  # `Path.type/1` requires a drive letter on Windows and a leading "/" on
+  # every other OS (macOS included); a literal "C:/..." fixture is only
+  # absolute on Windows, so tests using it fail everywhere else.
+  defp abs_path(relative_parts) when is_binary(relative_parts) do
+    case :os.type() do
+      {:win32, _} -> "C:/" <> relative_parts
+      _ -> "/" <> relative_parts
+    end
+  end
+
   @tag :tmp_dir
   test "ListProjects.definition returns correct tool name" do
     assert %{"name" => "list_projects"} = ListProjects.definition()
@@ -493,7 +504,7 @@ defmodule CapcutMcp.ToolsTest do
     {:ok, msg} =
       AddClip.execute(%{
         "project_id" => id,
-        "file_path" => "C:/test.mp4",
+        "file_path" => abs_path("test.mp4"),
         "start_ms" => 0,
         "duration_ms" => 5000
       })
@@ -537,7 +548,7 @@ defmodule CapcutMcp.ToolsTest do
     {:ok, msg} =
       AddClip.execute(%{
         "project_id" => id,
-        "file_path" => "C:/test.mp4",
+        "file_path" => abs_path("test.mp4"),
         "start_ms" => 0,
         "duration_ms" => 5000
       })
@@ -562,7 +573,7 @@ defmodule CapcutMcp.ToolsTest do
     {:ok, msg} =
       AddClip.execute(%{
         "project_id" => id,
-        "file_path" => "C:/test.mp4",
+        "file_path" => abs_path("test.mp4"),
         "start_ms" => 0,
         "duration_ms" => 5000
       })
@@ -666,7 +677,7 @@ defmodule CapcutMcp.ToolsTest do
     assert {:ok, msg} =
              AddClip.execute(%{
                "project_id" => id,
-               "file_path" => "C:/Users/tspor/Videos/test.mp4",
+               "file_path" => abs_path("Users/tspor/Videos/test.mp4"),
                "start_ms" => 0,
                "duration_ms" => 5000
              })
@@ -682,7 +693,7 @@ defmodule CapcutMcp.ToolsTest do
     assert {:ok, msg} =
              AddClip.execute(%{
                "project_id" => id,
-               "file_path" => "C:/Users/tspor/Music/track.mp3",
+               "file_path" => abs_path("Users/tspor/Music/track.mp3"),
                "start_ms" => 0,
                "duration_ms" => 3000
              })
@@ -698,7 +709,7 @@ defmodule CapcutMcp.ToolsTest do
     assert {:error, msg} =
              AddClip.execute(%{
                "project_id" => id,
-               "file_path" => "C:/Users/tspor/Videos/test.mp4",
+               "file_path" => abs_path("Users/tspor/Videos/test.mp4"),
                "start_ms" => 0,
                "duration_ms" => 5000,
                "track_index" => 99
@@ -715,7 +726,7 @@ defmodule CapcutMcp.ToolsTest do
     assert {:error, msg} =
              AddClip.execute(%{
                "project_id" => id,
-               "file_path" => "C:/Users/tspor/Videos/test.mp4",
+               "file_path" => abs_path("Users/tspor/Videos/test.mp4"),
                "start_ms" => -1,
                "duration_ms" => 5000
              })
@@ -731,7 +742,7 @@ defmodule CapcutMcp.ToolsTest do
     assert {:error, msg} =
              AddClip.execute(%{
                "project_id" => id,
-               "file_path" => "C:/Users/tspor/Videos/test.mp4",
+               "file_path" => abs_path("Users/tspor/Videos/test.mp4"),
                "start_ms" => 0,
                "duration_ms" => 0
              })
@@ -782,7 +793,7 @@ defmodule CapcutMcp.ToolsTest do
     assert {:error, msg} =
              AddClip.execute(%{
                "project_id" => id,
-               "file_path" => "C:/Users/tspor/Documents/notes.txt",
+               "file_path" => abs_path("Users/tspor/Documents/notes.txt"),
                "start_ms" => 0,
                "duration_ms" => 5000
              })
