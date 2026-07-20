@@ -240,6 +240,19 @@ defmodule CapcutMcp.ToolsTest do
     assert text_tracks != []
     segments = hd(text_tracks)["segments"]
     assert segments != []
+
+    # Regression: text segments are a "visual segment" in CapCut's own
+    # schema (same family as video/sticker) and always carry a `clip`
+    # object — confirmed against pyCapCut's TextSegment(VisualSegment)
+    # inheritance, and against a real CapCut project via set_clip_keyframe.
+    # Without this, set_clip_transform/set_clip_keyframe silently reject
+    # every text segment with "no clip object". `List.last/1`, not `hd/1`:
+    # this draft's seed already has a pre-existing text segment ahead of
+    # the one this test just added.
+    segment = List.last(segments)
+    assert segment["clip"]["alpha"] == 1.0
+    assert segment["clip"]["transform"] == %{"x" => 0.0, "y" => 0.0}
+    assert segment["common_keyframes"] == []
   end
 
   @tag :tmp_dir

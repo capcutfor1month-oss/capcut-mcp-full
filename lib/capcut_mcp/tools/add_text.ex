@@ -98,7 +98,24 @@ defmodule CapcutMcp.Tools.AddText do
       "target_timerange" => %{"start" => start_us, "duration" => duration_us},
       "source_timerange" => %{"start" => 0, "duration" => duration_us},
       "extra_material_refs" => [],
-      "render_index" => 0
+      "render_index" => 0,
+      # Text segments are a "visual segment" in CapCut's schema (same family
+      # as video/sticker), and always carry a `clip` object — confirmed
+      # against pyCapCut's `TextSegment(VisualSegment)` inheritance. Without
+      # this, `set_clip_transform` and `set_clip_keyframe`'s
+      # position/scale/rotation properties silently reject every text
+      # segment with "no clip object" — a real gap this tool had before
+      # `set_clip_keyframe` existed to surface it via a live ground-truth
+      # test.
+      "clip" => %{
+        "alpha" => 1.0,
+        "flip" => %{"horizontal" => false, "vertical" => false},
+        "rotation" => 0.0,
+        "scale" => %{"x" => 1.0, "y" => 1.0},
+        "transform" => %{"x" => 0.0, "y" => 0.0}
+      },
+      "uniform_scale" => %{"on" => true, "value" => 1.0},
+      "common_keyframes" => []
     }
   end
 

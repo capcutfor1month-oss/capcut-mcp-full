@@ -14,7 +14,7 @@ Built just for fun in a "crazy" language. Elixir/OTP with GenServers, supervisio
 
 ## What it does
 
-Claude gets 16 tools to work with your CapCut projects:
+Claude gets 19 tools to work with your CapCut projects:
 
 **Read & Inspect**
 
@@ -46,6 +46,14 @@ Claude gets 16 tools to work with your CapCut projects:
 | `move_clip` | Reposition a clip on the timeline |
 | `trim_clip` | Set source in/out points and timeline duration |
 | `remove_clip` | Remove a clip by its segment ID |
+| `set_clip_keyframe` | Animate a property over time (position, scale, rotation, opacity, saturation, contrast, brightness, volume) -- call once per keyframe point to build a curve |
+
+**Text Animations**
+
+| Tool | What Claude can do |
+|------|--------------------|
+| `add_text_animation` | Apply a fade/slide/blur/typewriter intro or outro animation to a text clip |
+| `list_text_animations` | List the available animation names |
 
 Example prompts once connected:
 - "List my CapCut projects"
@@ -55,6 +63,8 @@ Example prompts once connected:
 - "Set the screen recording clip to Screen blend mode"
 - "Move clip X to 5 seconds and set its opacity to 0.8"
 - "Mute the video on track 2 and loop the mascot clip"
+- "Add a fade-in to the title text, and a fade-out for the last half second"
+- "Animate the logo sliding up into position over the first 500ms"
 
 ## Requirements
 
@@ -360,7 +370,7 @@ iex -S mix run --no-halt
 - **:telemetry** -- structured events for every tool call
 - **Credo** (`--strict`) -- zero issues
 - **Dialyzer** (`:underspecs`, `:error_handling`, `:unknown`) -- zero warnings
-- **ExUnit** -- 217 tests + 15 `stream_data` property tests + 8 doctests (incl. JSON-RPC integration tests with telemetry assertions on tools + cache + blend-modes + schema-version + meta-rejected events, path-discovery fallbacks for both Windows and macOS, a boundary fuzz test that hammers every registered tool with random `StreamData.term()` arguments, and timeline-mutation invariants like `update_segment` roundtrip, `ensure_timerange` idempotency and `insert_segment` count preservation)
+- **ExUnit** -- 237 tests + 15 `stream_data` property tests + 8 doctests (incl. JSON-RPC integration tests with telemetry assertions on tools + cache + blend-modes + schema-version + meta-rejected events, path-discovery fallbacks for both Windows and macOS, a boundary fuzz test that hammers every registered tool with random `StreamData.term()` arguments, timeline-mutation invariants like `update_segment` roundtrip, `ensure_timerange` idempotency and `insert_segment` count preservation, and a latin1-stdio regression test locking in the binary-transport fix)
 - **StreamData** -- property-based tests for `TimelineHelper` (UUID format, segment roundtrip, track insertion invariants, `validate_timing` domain) and for the `tools/call` request boundary (no random payload may crash the dispatcher)
 - **ExCoveralls** -- coverage report on application code (remaining gaps are the stdin-loop I/O layer and a few lazy disk helpers)
 
