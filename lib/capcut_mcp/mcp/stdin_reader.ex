@@ -20,7 +20,12 @@ defmodule CapcutMcp.MCP.StdinReader do
 
   @doc false
   def loop(target) do
-    case IO.read(:stdio, :line) do
+    # `binread`, not `IO.read`: under `-noshell` stdio is latin1, so `IO.read`
+    # would corrupt any non-ASCII (UTF-8) bytes in an incoming request — e.g. a
+    # project name argument with an accent. Reading raw bytes keeps the JSON-RPC
+    # transport byte-clean UTF-8 end to end (see the matching `binwrite` on the
+    # response side in `CapcutMcp.MCP.Server`).
+    case IO.binread(:stdio, :line) do
       :eof ->
         send_to(target, :eof)
 

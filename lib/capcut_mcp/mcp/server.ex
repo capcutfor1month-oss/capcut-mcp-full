@@ -24,14 +24,26 @@ defmodule CapcutMcp.MCP.Server do
     with {:ok, msg} <- Protocol.decode_message(line),
          :ok <- set_request_metadata(msg),
          response when not is_nil(response) <- Dispatcher.dispatch(msg) do
-      IO.puts(:stdio, response)
+      write_line(response)
     else
-      {:error, _} -> IO.puts(:stdio, Protocol.encode_error(nil, -32_700, "Parse error"))
+      {:error, _} -> write_line(Protocol.encode_error(nil, -32_700, "Parse error"))
       nil -> :ok
     end
 
     Logger.reset_metadata()
     {:noreply, state}
+  end
+
+  # Write the JSON-RPC response as raw UTF-8 bytes. MUST be `binwrite`, not
+  # `IO.puts`: under `-noshell` (both `mix run` and the release) stdio defaults
+  # to latin1, and `IO.puts` on a latin1 device escapes any non-latin1 codepoint
+  # — e.g. the "•" bullet or an accented project name — into the literal text
+  # `\x{2022}`, which is not a valid JSON escape and makes the client reject the
+  # whole message ("Bad escaped character in JSON"). `Jason.encode!/1` already
+  # returns a proper UTF-8 binary; `binwrite` emits those bytes verbatim,
+  # bypassing the device's character encoding entirely.
+  defp write_line(iodata) do
+    IO.binwrite(:stdio, [iodata, ?\n])
   end
 
   def handle_info(:eof, state) do
