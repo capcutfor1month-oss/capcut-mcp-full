@@ -100,17 +100,27 @@ export PATH="$(brew --prefix erlang)/bin:$PATH"
 
 ### Both platforms
 
-**3. Clone and build:**
+**3. Clone and build the release:**
 ```bash
 git clone https://github.com/capcutfor1month-oss/capcut-mcp-full.git
 cd capcut-mcp-full
 mix deps.get
-mix compile
+MIX_ENV=prod mix release --overwrite
 ```
+
+The MCP clients below launch the server via `start-mcp.sh` (macOS/Linux) or
+`start-mcp.bat` (Windows), which run the **release** built above — a
+self-contained bundle (it even ships its own Erlang runtime) that boots in a
+fraction of a second. This matters: the naive `mix run` entrypoint recompiles
+and takes the `_build` lock on every launch, which on a cold or external disk
+can take several seconds and, when a client spawns more than one instance at
+once, makes them block each other — the usual cause of an MCP server that
+connects but then times out on the first tool call. Re-run
+`MIX_ENV=prod mix release --overwrite` whenever you pull new code.
 
 **4. Smoke test:**
 ```bash
-echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}}}' | mix run --no-halt
+echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}}}' | ./start-mcp.sh
 ```
 
 Expected: a JSON response with `"name":"capcut-mcp"`.
@@ -138,17 +148,16 @@ Create (or edit) `.claude/settings.json` in the project root:
 
 Restart Claude Code -- the `capcut` tools appear automatically.
 
-On macOS, use forward-slash paths and point `PATH` at wherever Homebrew installed Erlang/Elixir (`brew --prefix erlang` / `brew --prefix elixir`):
+On macOS, point `command` at the `start-mcp.sh` wrapper (which runs the
+self-contained release from step 3 — no `mix`/Elixir needed at runtime):
 
 ```json
 {
   "mcpServers": {
     "capcut": {
-      "command": "mix",
-      "args": ["run", "--no-halt"],
-      "cwd": "/Users/<you>/capcut-mcp-full",
+      "command": "/Users/<you>/capcut-mcp-full/start-mcp.sh",
       "env": {
-        "PATH": "/opt/homebrew/bin:/opt/homebrew/opt/erlang/bin:/usr/bin:/bin"
+        "PATH": "/usr/bin:/bin"
       }
     }
   }
@@ -179,12 +188,12 @@ Then add it to `%APPDATA%\Claude\claude_desktop_config.json`:
 }
 ```
 
-**macOS** -- the repo ships a `start-mcp.sh` (make it executable once with `chmod +x start-mcp.sh`):
+**macOS** -- the repo ships a `start-mcp.sh` (make it executable once with `chmod +x start-mcp.sh`). It launches the self-contained release built in step 3, so it needs no `mix`/Elixir at runtime:
 
 ```bash
 #!/bin/sh
-cd "$(dirname "$0")"
-mix run --no-halt
+DIR="$(cd "$(dirname "$0")" && pwd)"
+exec "$DIR/_build/prod/rel/capcut_mcp/bin/capcut_mcp" start
 ```
 
 Then add it to `~/Library/Application Support/Claude/claude_desktop_config.json`:
@@ -195,7 +204,7 @@ Then add it to `~/Library/Application Support/Claude/claude_desktop_config.json`
     "capcut": {
       "command": "/Users/<you>/capcut-mcp-full/start-mcp.sh",
       "env": {
-        "PATH": "/opt/homebrew/bin:/opt/homebrew/opt/erlang/bin:/usr/bin:/bin"
+        "PATH": "/usr/bin:/bin"
       }
     }
   }

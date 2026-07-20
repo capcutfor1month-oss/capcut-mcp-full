@@ -1,0 +1,10 @@
+## Deliver the BEAM's stdin to the app (StdinReader) instead of an Erlang
+## shell — required for the MCP stdio transport. Mirrors the `-noshell`
+## that `mix run --no-halt` uses.
+-noshell
+
+## Do not attempt to read the boot script's own input as Erlang terms.
++Bd
+
+## Reasonable defaults for a small, long-lived stdio service.
++K true

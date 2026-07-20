@@ -36,7 +36,15 @@ defmodule CapcutMcp.MCP.Server do
 
   def handle_info(:eof, state) do
     Logger.info("stdin closed — shutting down")
-    {:stop, :normal, state}
+    # The MCP client closed stdin, which is its signal to shut down. Stop
+    # the whole runtime gracefully with exit status 0. Using `System.stop/1`
+    # (rather than `{:stop, :normal, state}`) matters when running as a
+    # release: a `:permanent` application terminating on its own brings the
+    # node down abnormally ("Kernel pid terminated") and writes an
+    # `erl_crash.dump`. `System.stop/0` runs every application's shutdown
+    # callbacks in order and exits cleanly with no crash dump.
+    System.stop(0)
+    {:noreply, state}
   end
 
   def handle_info({:stdin_error, reason}, state) do
